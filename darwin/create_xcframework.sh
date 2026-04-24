@@ -14,7 +14,7 @@ MIN_MACOS_VERSION="12.0"
 
 DEPENDENCY_LIBS=(
   "libggml.dylib" "libggml-metal.dylib" "libggml-base.dylib"
-  "libggml-cpu.dylib" "libggml-blas.dylib"
+  "libggml-cpu.dylib" "libggml-blas.dylib" "libmtmd.dylib"
 )
 
 # paths where YOUR build system placed the thin architectures

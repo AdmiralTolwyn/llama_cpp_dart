@@ -32,8 +32,9 @@ build_for_platform() {
           -DLLAMA_BUILD_TESTS=OFF \
           -DLLAMA_BUILD_EXAMPLES=OFF \
           -DLLAMA_BUILD_SERVER=OFF \
-          -DLLAMA_BUILD_TOOLS=OFF \
-          -DLLAMA_BUILD_COMMON=OFF \
+          -DLLAMA_BUILD_TOOLS=ON \
+          -DLLAMA_BUILD_COMMON=ON \
+          -DCMAKE_CXX_FLAGS="-UCPPHTTPLIB_USE_CERTS_FROM_MACOSX_KEYCHAIN" \
           -DCMAKE_PROJECT_INCLUDE="${script_dir}/no_bundle.cmake" \
           -DCMAKE_BUILD_TYPE=Release \
           -G Xcode \
