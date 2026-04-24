@@ -19,9 +19,11 @@ export 'src/isolate/isolate_types.dart';
 export 'src/isolate/isolate_scope.dart';
 
 export 'src/chat/chat.dart';
+export 'src/chat/tool_calling.dart';
 export 'src/utils/text_chunker.dart';
 
 export 'src/core/llama_input.dart';
+export 'src/core/parallel_decoder.dart';
 
 export 'src/mcp/mcp_server_tool.dart';
 export 'src/mcp/mcp_server.dart';
