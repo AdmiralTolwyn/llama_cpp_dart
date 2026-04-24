@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import '../../llama_cpp_dart.dart';
+/// A function that generates text from a prompt.
+typedef GenerateFunction = Future<String?> Function(String prompt);
 
 /// A pending parallel completion request.
 class ParallelRequest {
@@ -59,16 +60,16 @@ class ParallelRequest {
 /// sequential queue that processes requests one at a time but provides
 /// the same API surface for future native parallel support.
 class ParallelDecoder {
-  final GgufModelManager _gguf;
+  final GenerateFunction _generate;
   int _nParallel;
   bool _enabled = false;
   final _queue = <ParallelRequest>[];
   bool _processing = false;
 
   ParallelDecoder({
-    required GgufModelManager gguf,
+    required GenerateFunction generate,
     int nParallel = 2,
-  })  : _gguf = gguf,
+  })  : _generate = generate,
         _nParallel = nParallel;
 
   bool get isEnabled => _enabled;
@@ -119,7 +120,7 @@ class ParallelDecoder {
       if (request.isCancelled) continue;
 
       try {
-        final result = await _gguf.generate(request.prompt);
+        final result = await _generate(request.prompt);
         if (result != null) {
           request.addToken(result);
         }
