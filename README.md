@@ -29,6 +29,28 @@ dependencies:
       ref: main
 ```
 
+### Important: Batch Size Configuration
+
+> **`nBatch` MUST equal `nCtx`**. The default batch size (512) silently rejects any prompt exceeding 512 tokens. Set it when creating context params:
+
+```dart
+final contextParams = ContextParams()
+  ..nCtx = 32768
+  ..nBatch = 32768; // Default 512 is too small for real prompts
+```
+
+### Important: Stream Lifecycle
+
+Use `LlamaParent.completions` (not `stream.onDone`) to detect when generation finishes. The token `stream` is a broadcast `StreamController` that never fires `onDone`.
+
+```dart
+final promptId = await llamaParent.sendPrompt(prompt);
+final completion = await llamaParent.completions
+    .where((e) => e.promptId == promptId)
+    .first;
+// completion.success / completion.errorDetails
+```
+
 ## Overview
 
 This library provides three levels of abstraction for integrating llama.cpp into your Dart/Flutter projects, allowing you to choose the right balance between control and convenience:

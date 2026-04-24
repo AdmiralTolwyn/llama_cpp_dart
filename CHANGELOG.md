@@ -1,5 +1,14 @@
 ## 0.3.0 (AdmiralTolwyn fork)
 
+### CRITICAL: nBatch Configuration
+* **`ContextParams.nBatch` MUST be set to match `nCtx`**. The default (512) silently rejects any prompt exceeding 512 tokens with `LlamaException: Prompt tokens (N) > batch capacity (512)`. This affects ALL models and causes 0-char responses.
+
+```dart
+final contextParams = ContextParams()
+  ..nCtx = 32768
+  ..nBatch = 32768; // MUST match nCtx
+```
+
 ### llama.cpp Update
 * **Updated llama.cpp** from b7807 (Jan 2025) to latest master (~b8900+, Apr 2026)
 * All new model architectures now supported: **Gemma 4** (PLE), **Qwen 3.5** (Gated DeltaNet + MoE), and all models released since Jan 2025
