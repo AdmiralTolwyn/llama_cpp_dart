@@ -1,3 +1,30 @@
+## 0.3.0 (AdmiralTolwyn fork)
+
+### llama.cpp Update
+* **Updated llama.cpp** from b7807 (Jan 2025) to latest master (~b8900+, Apr 2026)
+* All new model architectures now supported: **Gemma 4** (PLE), **Qwen 3.5** (Gated DeltaNet + MoE), and all models released since Jan 2025
+
+### New Features
+* **JSON Schema → GBNF converter** (`JsonSchemaToGbnf.convert()`) — Converts JSON Schema objects to GBNF grammar strings for constrained output generation. Supports object, array, string, number, integer, boolean, enum, const, oneOf/anyOf. Includes `simpleObject()` helper.
+* **Tool Calling** (`ToolCallParser`) — Parses tool calls from model output in 3 formats: OpenAI-style JSON, `<tool_call>` XML tags, and Hermes/Qwen style. Includes `ToolDefinition`, `ToolCall`, `ToolResult` classes and `buildToolsPrompt()` / `formatToolResult()` helpers.
+* **Parallel Decoding** (`ParallelDecoder`) — Queue-based parallel request processing matching llama.rn's `context.parallel` API (`enable`, `completion`, `disable`). Sequential queue now; native multi-slot via FFI in future.
+* **Reranker API** (`Reranker`, `NoOpReranker`) — Protocol for document relevance scoring matching llama.rn's `context.rerank()`. Uses `LLAMA_POOLING_TYPE_RANK` with `llama_encode` + embeddings.
+
+### iOS Build Fixes
+* **Patched cpp-httplib** for iOS — guarded `SecTrustCopyAnchorCertificates` with `__IPHONE_OS_VERSION_MIN_REQUIRED` check (function unavailable on iOS)
+* **Disabled OpenSSL** for iOS builds (`-DLLAMA_OPENSSL=OFF`) — prevents macOS Homebrew OpenSSL from linking into iOS binaries
+* Re-enabled `LLAMA_BUILD_COMMON` + `LLAMA_BUILD_TOOLS` for libmtmd (multimodal/vision)
+* XCFramework now includes **libmtmd.dylib** (912 KB) for vision/multimodal support
+
+### Android
+* Added `<uses-native-library android:name="libcdsprpc.so">` for Hexagon NPU acceleration (Snapdragon 8 Gen 1+)
+* Hexagon NPU can be enabled with `-DGGML_HEXAGON=ON` in Android builds
+
+### Infrastructure
+* Bumped version to 0.3.0
+* Updated homepage/repository URLs to AdmiralTolwyn fork
+* Exported new modules: `tool_calling.dart`, `parallel_decoder.dart`, `json_schema_to_gbnf.dart`, `reranker.dart`
+
 ## 0.2.3
 *  **Performance**: Moved image embedding storage to native memory (C heap) to reduce Dart GC pressure and improve stability with high-resolution images.
 *  Fix memory leaks in session cancellation and disposal logic.

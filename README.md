@@ -1,6 +1,33 @@
 # LLAMA.CPP DART
 
+> **Fork**: [AdmiralTolwyn/llama_cpp_dart](https://github.com/AdmiralTolwyn/llama_cpp_dart) — updated llama.cpp to latest master with full llama.rn feature parity.
+
 A high-performance Dart binding for llama.cpp, enabling advanced text generation capabilities in both Dart and Flutter applications with flexible integration options.
+
+## What's New in This Fork (v0.3.0)
+
+| Feature | Status |
+|---------|--------|
+| **Latest llama.cpp** (~b8900+, Apr 2026) | All new model architectures (Gemma 4, Qwen 3.5, etc.) |
+| **Grammar Sampling** (GBNF) | Constrain output to valid JSON via `SamplerParams.grammarStr` |
+| **JSON Schema → GBNF** | `JsonSchemaToGbnf.convert(schema)` — auto-generate grammar from schema |
+| **Tool Calling** | Parse OpenAI-style, `<tool_call>`, and Hermes/Qwen formats |
+| **Vision / Multimodal** | libmtmd built and bundled for mmproj image understanding |
+| **Parallel Decoding** | Queue-based API matching llama.rn (`enable`/`completion`/`disable`) |
+| **Rerank API** | Document relevance scoring protocol |
+| **Metal GPU** (iOS) | Compiled in, automatic |
+| **OpenCL GPU** (Android) | Adreno 700+ |
+| **Hexagon NPU** (Android) | Snapdragon 8 Gen 1+ (enable with `-DGGML_HEXAGON=ON`) |
+
+### Usage via Git Dependency
+
+```yaml
+dependencies:
+  llama_cpp_dart:
+    git:
+      url: https://github.com/AdmiralTolwyn/llama_cpp_dart.git
+      ref: main
+```
 
 ## Overview
 
@@ -175,6 +202,82 @@ For most applications, Q4_K_M provides an excellent balance.
 - **ROCm (AMD)**: Support for AMD GPUs
 
 Ensure your compiled llama.cpp library includes support for your target hardware.
+
+## JSON Schema Constrained Output
+
+Force models to produce valid JSON matching a schema:
+
+```dart
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+
+// Define the expected output schema
+final grammar = JsonSchemaToGbnf.convert({
+  'type': 'object',
+  'properties': {
+    'VERDICT': {'type': 'string', 'enum': ['TRADE', 'NO TRADE', 'WATCH']},
+    'STRATEGY': {'type': 'string'},
+    'CONVICTION': {'type': 'integer'},
+    'RATIONALE': {'type': 'string'},
+  },
+  'required': ['VERDICT', 'STRATEGY', 'CONVICTION', 'RATIONALE'],
+});
+
+// Apply to sampler params
+final samplerParams = SamplerParams()
+  ..temp = 0.3
+  ..grammarStr = grammar
+  ..grammarRoot = 'root';
+```
+
+## Tool Calling
+
+Parse tool calls from model output:
+
+```dart
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+
+// Define tools
+final tools = [
+  ToolDefinition(
+    name: 'get_weather',
+    description: 'Get current weather for a city',
+    parameters: {
+      'type': 'object',
+      'properties': {
+        'city': {'type': 'string'},
+      },
+    },
+  ),
+];
+
+// Inject into prompt
+final toolsPrompt = ToolCallParser.buildToolsPrompt(tools);
+
+// Parse model output
+final calls = ToolCallParser.parse(modelOutput);
+for (final call in calls) {
+  print('Tool: ${call.name}, Args: ${call.arguments}');
+}
+```
+
+## Parallel Decoding
+
+Queue multiple requests:
+
+```dart
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+
+final decoder = ParallelDecoder(generate: myGenerateFunction);
+decoder.enable(nParallel: 4);
+
+final r1 = decoder.completion('What is AI?', onToken: (t) => print(t));
+final r2 = decoder.completion('Explain quantum computing');
+
+final result1 = await r1.promise;
+final result2 = await r2.promise;
+
+decoder.disable();
+```
 
 ## License
 
