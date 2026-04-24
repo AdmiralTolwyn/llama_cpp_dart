@@ -23,6 +23,9 @@ if (ANDROID)
 endif()
 
 # 2. Add llama.cpp (This builds llama, ggml, and applies the -DGGML_OPENCL flags)
+# Hexagon NPU support (Qualcomm SM8450+ / Snapdragon 8 Gen 1+)
+# Enable with: -DGGML_HEXAGON=ON in your Android build
+# Requires libcdsprpc.so on the device (add <uses-native-library> to manifest)
 add_subdirectory(llama.cpp)
 
 # 3. Define your wrapper library (mtmd)

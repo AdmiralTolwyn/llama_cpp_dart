@@ -24,6 +24,8 @@ export 'src/utils/text_chunker.dart';
 
 export 'src/core/llama_input.dart';
 export 'src/core/parallel_decoder.dart';
+export 'src/core/json_schema_to_gbnf.dart';
+export 'src/core/reranker.dart';
 
 export 'src/mcp/mcp_server_tool.dart';
 export 'src/mcp/mcp_server.dart';

@@ -1,3 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
   package="io.github.netdur.llama_cpp_dart">
+  <!-- OpenCL GPU acceleration (Qualcomm Adreno 700+) -->
+  <uses-native-library android:name="libOpenCL.so" android:required="false" />
+  <!-- Hexagon NPU acceleration (Qualcomm SM8450+ / Snapdragon 8 Gen 1+) -->
+  <uses-native-library android:name="libcdsprpc.so" android:required="false" />
 </manifest>
