@@ -1,6 +1,12 @@
 /// High-level API for llama.cpp.
 library;
 
+export 'src/core/llama_log_level.dart';
+export 'src/core/llama_diagnostics.dart';
+export 'src/core/lora_adapter.dart';
+
+export 'src/prompt/template_router.dart';
+
 export 'src/core/model_params.dart';
 export 'src/core/context_params.dart';
 export 'src/core/sampler_params.dart';
@@ -12,6 +18,8 @@ export 'src/prompt/prompt_format.dart';
 export 'src/prompt/alpaca_format.dart';
 export 'src/prompt/chatml_format.dart';
 export 'src/prompt/gemma_format.dart';
+export 'src/prompt/harmony_format.dart';
+// template_router.dart already exported above
 
 export 'src/isolate/isolate_child.dart';
 export 'src/isolate/isolate_parent.dart';

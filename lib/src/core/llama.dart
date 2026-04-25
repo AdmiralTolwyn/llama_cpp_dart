@@ -19,10 +19,13 @@ import 'service/pending_item.dart';
 import 'service/sampler_factory.dart';
 import 'service/utf8_accumulator.dart';
 import 'service/vision_helper.dart';
+import 'llama_log_level.dart';
+import 'llama_diagnostics.dart';
+import 'lora_adapter.dart';
 export 'llama_types.dart';
 
 /// A Dart wrapper for llama.cpp functionality.
-class Llama {
+class Llama with LoraAdapterMixin {
   static llama_cpp? _lib;
 
   late Pointer<llama_model> model;
@@ -53,6 +56,7 @@ class Llama {
   bool get isDisposed => _isDisposed;
 
   ContextParams? _contextParams;
+  int _nGpuLayers = 99;
 
   static llama_cpp get lib {
     if (_lib == null) {
@@ -113,6 +117,7 @@ class Llama {
 
   llama_cpp getLib() => _lib!;
 
+  @override
   Pointer<llama_context> get context => _slots[_currentSlotId]!.context;
 
   int get _nPos => _slots[_currentSlotId]!.nPos;
@@ -312,6 +317,20 @@ class Llama {
     return (trimStart, true);
   }
 
+  // ── Log level API ─────────────────────────────────────────────────────────
+
+  /// Sets the Dart-side log verbosity (Dart print calls within the bindings).
+  static void setDartLogLevel(LlamaLogLevel level) =>
+      LlamaLogger.setDartLogLevel(level);
+
+  /// Sets the native llama.cpp / ggml log verbosity.
+  static void setNativeLogLevel(LlamaLogLevel level) =>
+      LlamaLogger.setNativeLogLevel(level, lib);
+
+  /// Convenience: sets both Dart and native levels simultaneously.
+  static void setLogLevel(LlamaLogLevel level) =>
+      LlamaLogger.setLogLevel(level, lib);
+
   static void llamaLogCallbackNull(
       int level, Pointer<Char> text, Pointer<Void> userData) {}
 
@@ -325,16 +344,41 @@ class Llama {
     print('llama native [$level] $msg');
   }
 
+  // ── Diagnostics API ───────────────────────────────────────────────────────
+
+  /// Returns runtime diagnostics for this loaded instance.
+  ///
+  /// Must be called after the model is loaded (after [Llama] construction).
+  LlamaDiagnostics getDiagnostics() {
+    if (!_isInitialized) throw StateError('Model not yet loaded');
+    return LlamaRuntime.getDiagnostics(
+      model,
+      context,
+      vocab,
+      _nGpuLayers,
+      visionEnabled: _isVisionEnabled,
+    );
+  }
+
+  /// The backend name currently in use ("Metal", "CUDA", "CPU", …).
+  String getBackendName() => getDiagnostics().backendName;
+
+  /// Number of GPU layers actually configured for this context.
+  int getResolvedGpuLayers() => _nGpuLayers;
+
   void _initializeLlama(
       String modelPath,
       String? mmprojPath,
       ModelParams? modelParamsDart,
       ContextParams? contextParamsDart,
       SamplerParams? samplerParams) {
-    if (_verbose == false) {
+    if (_verbose == false && LlamaLogger.nativeLevel == LlamaLogLevel.none) {
       final nullCallbackPointer =
           Pointer.fromFunction<LlamaLogCallback>(Llama.llamaLogCallbackNull);
       lib.llama_log_set(nullCallbackPointer, nullptr);
+    } else if (LlamaLogger.nativeLevel != LlamaLogLevel.none) {
+      // LlamaLogger has an explicit level set — apply it (overrides _verbose)
+      LlamaLogger.setNativeLogLevel(LlamaLogger.nativeLevel, lib);
     }
 
     if (!_backendInitialized) {
@@ -354,6 +398,7 @@ class Llama {
     }
 
     modelParamsDart ??= ModelParams();
+    _nGpuLayers = modelParamsDart.nGpuLayers;
     var modelParams = modelParamsDart.get();
 
     final modelPathPtr = modelPath.toNativeUtf8().cast<Char>();
