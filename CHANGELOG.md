@@ -1,3 +1,74 @@
+## 0.3.1 (AdmiralTolwyn fork)
+
+### New Features
+* **Split Log Levels** (`LlamaLogger`) — Control Dart-side and native llama.cpp logs independently.
+  ```dart
+  Llama.setDartLogLevel(LlamaLogLevel.info);     // Dart bindings verbosity
+  Llama.setNativeLogLevel(LlamaLogLevel.warn);   // native llama.cpp / ggml logs
+  Llama.setLogLevel(LlamaLogLevel.none);         // silence everything
+  ```
+  Available levels: `none`, `debug`, `info`, `warn`, `error`.
+
+* **Runtime Diagnostics** (`LlamaRuntime`, `LlamaDiagnostics`) — Introspect a loaded model at runtime.
+  ```dart
+  final diag = llamaInstance.getDiagnostics();
+  print(diag.backendName);     // "Metal" | "CUDA" | "CPU"
+  print(diag.nGpuLayers);      // 99
+  print(diag.modelDesc);       // "llama 3.2 3B Q4_K_M"
+  print(diag.modelSizeBytes);  // 1910000000
+  print(diag.nParams);         // 3000000000
+  print(diag.nCtx);            // 8192
+  print(diag.isGpuAccelerated); // true
+  // convenience accessors also on Llama directly:
+  llamaInstance.getBackendName();       // "Metal"
+  llamaInstance.getResolvedGpuLayers(); // 99
+  ```
+
+* **LoRA Runtime Adapters** (`LoraAdapter`, `LoraAdapterMixin`) — Load and apply GGUF LoRA adapters dynamically.
+  ```dart
+  final adapter = LoraAdapter.load(llama.model, 'path/to/adapter.gguf');
+  llama.setLora(adapter, scale: 0.8);   // apply with scaling
+  llama.rmLora(adapter);                // remove without freeing
+  llama.clearLoras();                   // remove all
+  adapter.dispose();                    // free native memory
+  ```
+  Multiple adapters share the base model memory. Scale can be adjusted dynamically.
+
+* **Per-Architecture Template Router** (`TemplateRouter`) — Automatically selects the correct `PromptFormat` from a model filename or loaded model metadata. Eliminates manual format selection.
+  ```dart
+  // From filename (before model loads — e.g. for UI display):
+  final format = TemplateRouter.detectFromFilename('gemma-3-4b-it-Q4_K_M.gguf');
+  // → GemmaFormat()
+
+  // From loaded model (uses GGUF metadata for highest accuracy):
+  final format = TemplateRouter.detectFormat(
+    model: llamaModelPtr,
+    lib: Llama.lib,
+    filename: model.filename, // optional fallback
+  );
+
+  final parent = LlamaParent(loadCommand, format);
+  ```
+  Routing table:
+  | Family | Format | Tokens |
+  |--------|--------|--------|
+  | Gemma 2/3/3n/4 | `GemmaFormat` | `<start_of_turn>` / `<end_of_turn>` |
+  | Phi 2/3/4/4-mini | `HarmonyFormat` | `<\|system\|>` / `<\|end\|>` |
+  | Llama 3/3.1/3.2/4 | `_Llama3Format` | `<\|begin_of_text\|>` / `<\|eot_id\|>` |
+  | Llama 2 / Alpaca | `AlpacaFormat` | `### Instruction:` |
+  | Qwen 2/2.5/3/3.5, Yi, Mistral, SmolLM | `ChatMLFormat` | `<\|im_start\|>` / `<\|im_end\|>` |
+  | (default fallback) | `ChatMLFormat` | — |
+
+* **`HarmonyFormat` now exported** — Previously used internally; now exported via the main barrel for Phi-family models.
+
+### Infrastructure
+* Bumped version to 0.3.1
+* Exported new modules: `llama_log_level.dart`, `llama_diagnostics.dart`, `lora_adapter.dart`, `template_router.dart`, `harmony_format.dart`
+* `Llama` now uses `with LoraAdapterMixin` — LoRA methods available directly on any `Llama` instance
+* `Llama._nGpuLayers` stored at load time from `ModelParams.nGpuLayers` (was not accessible after construction)
+
+---
+
 ## 0.3.0 (AdmiralTolwyn fork)
 
 ### CRITICAL: nBatch Configuration

@@ -4,7 +4,7 @@
 
 A high-performance Dart binding for llama.cpp, enabling advanced text generation capabilities in both Dart and Flutter applications with flexible integration options.
 
-## What's New in This Fork (v0.3.0)
+## What's New in This Fork (v0.3.1)
 
 | Feature | Status |
 |---------|--------|
@@ -15,6 +15,10 @@ A high-performance Dart binding for llama.cpp, enabling advanced text generation
 | **Vision / Multimodal** | libmtmd built and bundled for mmproj image understanding |
 | **Parallel Decoding** | Queue-based API matching llama.rn (`enable`/`completion`/`disable`) |
 | **Rerank API** | Document relevance scoring protocol |
+| **LoRA Runtime Adapters** | Load/apply/remove GGUF LoRA adapters dynamically with per-adapter scaling |
+| **Per-Arch Template Router** | `TemplateRouter.detectFromFilename()` — auto-select Gemma/Phi/Llama3/Qwen format |
+| **Split Log Levels** | `Llama.setDartLogLevel()` / `setNativeLogLevel()` — independent Dart & native control |
+| **Runtime Diagnostics** | `llama.getDiagnostics()` — backend name, GPU layers, model desc, param count |
 | **Metal GPU** (iOS) | Compiled in, automatic |
 | **OpenCL GPU** (Android) | Adreno 700+ |
 | **Hexagon NPU** (Android) | Snapdragon 8 Gen 1+ (enable with `-DGGML_HEXAGON=ON`) |
@@ -281,6 +285,108 @@ for (final call in calls) {
   print('Tool: ${call.name}, Args: ${call.arguments}');
 }
 ```
+
+## Template Router
+
+Automatically select the correct `PromptFormat` for any model:
+
+```dart
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+
+// From filename — use before the model is loaded (e.g. to show format in UI)
+final format = TemplateRouter.detectFromFilename('gemma-3-4b-it-Q4_K_M.gguf');
+// → GemmaFormat()
+
+// From loaded GGUF metadata — highest accuracy
+final format = TemplateRouter.detectFormat(
+  model: llamaModelPtr,
+  lib: Llama.lib,
+  filename: model.filename, // optional filename fallback
+);
+
+final parent = LlamaParent(loadCommand, format);
+```
+
+| Family | Format | Key tokens |
+|--------|--------|------------|
+| Gemma 2/3/3n/4 | `GemmaFormat` | `<start_of_turn>` / `<end_of_turn>` |
+| Phi 2/3/4/4-mini | `HarmonyFormat` | `<\|system\|>` / `<\|end\|>` |
+| Llama 3/3.1/3.2/4 | `_Llama3Format` | `<\|begin_of_text\|>` / `<\|eot_id\|>` |
+| Llama 2 / Alpaca | `AlpacaFormat` | `### Instruction:` |
+| Qwen 2–3.5, Yi, Mistral, SmolLM | `ChatMLFormat` | `<\|im_start\|>` / `<\|im_end\|>` |
+
+## Split Log Levels
+
+Control Dart-side and native llama.cpp logs independently:
+
+```dart
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+
+// During development: show native warnings only, suppress verbose Dart prints
+Llama.setDartLogLevel(LlamaLogLevel.none);
+Llama.setNativeLogLevel(LlamaLogLevel.warn);
+
+// For debugging inference issues: full verbosity
+Llama.setLogLevel(LlamaLogLevel.debug);
+
+// In production: silence everything
+Llama.setLogLevel(LlamaLogLevel.none);
+```
+
+Available levels: `none`, `debug`, `info`, `warn`, `error`.
+
+## Runtime Diagnostics
+
+Inspect a loaded model's runtime configuration:
+
+```dart
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+
+final llama = Llama('model.gguf', modelParams: ModelParams()..nGpuLayers = 99);
+
+final diag = llama.getDiagnostics();
+print(diag.backendName);      // "Metal" | "CUDA" | "Vulkan" | "CPU"
+print(diag.nGpuLayers);       // 99
+print(diag.modelDesc);        // "llama 3.2 3B Q4_K_M"
+print(diag.modelSizeBytes);   // 1910000000
+print(diag.nParams);          // 3000000000
+print(diag.nCtx);             // 8192
+print(diag.isGpuAccelerated); // true
+
+// Convenience accessors:
+print(llama.getBackendName());        // "Metal"
+print(llama.getResolvedGpuLayers());  // 99
+```
+
+## LoRA Runtime Adapters
+
+Load and apply GGUF LoRA adapters without reloading the base model:
+
+```dart
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+
+final llama = Llama('base-model.gguf');
+
+// Load adapter
+final adapter = LoraAdapter.load(llama.model, 'path/to/adapter.gguf');
+
+// Apply with scaling (0.0–1.0)
+llama.setLora(adapter, scale: 0.8);
+
+// Swap scale dynamically
+llama.setLora(adapter, scale: 0.4);
+
+// Remove adapter (does NOT free memory)
+llama.rmLora(adapter);
+
+// Remove all adapters
+llama.clearLoras();
+
+// Free native memory when fully done
+adapter.dispose();
+```
+
+Multiple adapters can be active simultaneously. Each shares the base model's weight memory — no extra RAM for the base weights.
 
 ## Parallel Decoding
 

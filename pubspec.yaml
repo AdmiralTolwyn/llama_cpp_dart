@@ -1,6 +1,6 @@
 name: llama_cpp_dart
 description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
-version: 0.3.0 # Updated llama.cpp to latest master (b8900+)
+version: 0.3.1 # Add TemplateRouter, split log levels, runtime diagnostics, LoRA adapters
 homepage: https://github.com/AdmiralTolwyn/llama_cpp_dart
 repository: https://github.com/AdmiralTolwyn/llama_cpp_dart
 
