@@ -1,12 +1,34 @@
 name: llama_cpp_dart
 description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
-version: 0.3.2 # Add LlamaParent.clear() for KV cache reset after native errors
+version: 0.3.3 # Multi-platform: flutter.plugin declaration for Android/iOS/macOS/Linux/Windows
 homepage: https://github.com/AdmiralTolwyn/llama_cpp_dart
 repository: https://github.com/AdmiralTolwyn/llama_cpp_dart
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
   flutter: ">=1.20.0"
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        # Compiles llama.cpp + mtmd via android/llamalib/build.gradle (NDK/CMake).
+        # Produces libmtmd.so + libllama.so bundled into the APK jniLibs.
+        ffiPlugin: true
+      ios:
+        # Native code provided via ios/llama_cpp_dart.podspec (vendored Llama.xcframework).
+        # CocoaPods handles linking; ffiPlugin: true tells Flutter to treat this as FFI.
+        ffiPlugin: true
+      macos:
+        # Compiled from source via macos/CMakeLists.txt → adds Metal support on Apple Silicon.
+        # DynamicLibrary.process() in llama.dart picks up the bundled dylib.
+        ffiPlugin: true
+      linux:
+        # Compiled from source via linux/CMakeLists.txt.
+        ffiPlugin: true
+      windows:
+        # Compiled from source via windows/CMakeLists.txt.
+        ffiPlugin: true
 
 dependencies:
   flutter:

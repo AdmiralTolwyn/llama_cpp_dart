@@ -5,7 +5,9 @@ plugins {
 android {
     namespace 'io.github.netdur.llama_cpp_dart.llamalib'
     compileSdk 36
-    ndkVersion "29.0.13846066"
+    // Use the NDK declared in the app's build.gradle so developers don't need
+    // to install a specific NDK version just for this plugin.
+    ndkVersion android.ndkVersion
 
     defaultConfig {
         minSdk 24
@@ -24,7 +26,8 @@ android {
                         "-DLLAMA_BUILD_EXAMPLES=OFF",
                         "-DLLAMA_BUILD_SERVER=OFF",
                         "-DLLAMA_BUILD_TOOLS=ON",
-                        "-DCMAKE_PROJECT_INCLUDE=/Users/adel/Workspace/llama_cpp_dart/darwin/no_bundle.cmake",
+                        // MACOSX_BUNDLE guard is macOS-only — not needed on Android.
+                        // Removed hardcoded absolute darwin/no_bundle.cmake path.
                         // GPU backend: OpenCL instead of Vulkan
                         "-DGGML_OPENCL=ON",
                         "-DGGML_OPENCL_EMBED_KERNELS=ON",

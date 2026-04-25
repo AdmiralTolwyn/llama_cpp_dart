@@ -50,6 +50,12 @@ class Llama with LoraAdapterMixin {
   bool _isVisionEnabled = false;
   LlamaStatus _status = LlamaStatus.uninitialized;
 
+  /// Override to load a specific native library.
+  /// Defaults:
+  ///   Android  → "libmtmd.so"  (from APK jniLibs, compiled by llamalib Gradle)
+  ///   iOS/macOS → null          (xcframework / CMake dylib linked into process)
+  ///   Windows  → null          (set to "llama.dll" path if using a prebuilt DLL)
+  ///   Linux    → null          (CMake .so linked into process)
   static String? libraryPath = Platform.isAndroid ? "libmtmd.so" : null;
 
   LlamaStatus get status => _status;
