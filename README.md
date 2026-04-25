@@ -4,7 +4,7 @@
 
 A high-performance Dart binding for llama.cpp, enabling advanced text generation capabilities in both Dart and Flutter applications with flexible integration options.
 
-## What's New in This Fork (v0.3.1)
+## What's New in This Fork (v0.3.2)
 
 | Feature | Status |
 |---------|--------|
@@ -19,6 +19,7 @@ A high-performance Dart binding for llama.cpp, enabling advanced text generation
 | **Per-Arch Template Router** | `TemplateRouter.detectFromFilename()` — auto-select Gemma/Phi/Llama3/Qwen format |
 | **Split Log Levels** | `Llama.setDartLogLevel()` / `setNativeLogLevel()` — independent Dart & native control |
 | **Runtime Diagnostics** | `llama.getDiagnostics()` — backend name, GPU layers, model desc, param count |
+| **`LlamaParent.clear()`** | Reset KV cache after native inference errors without unloading model |
 | **Metal GPU** (iOS) | Compiled in, automatic |
 | **OpenCL GPU** (Android) | Adreno 700+ |
 | **Hexagon NPU** (Android) | Snapdragon 8 Gen 1+ (enable with `-DGGML_HEXAGON=ON`) |

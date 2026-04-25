@@ -1,3 +1,19 @@
+## 0.3.2 (AdmiralTolwyn fork)
+
+### New Features
+* **`LlamaParent.clear()`** — Clears the KV cache and resets context state without unloading the model.
+  Use this to recover memory after a native inference error (`ggml_abort`, OOM, SIGABRT):
+  ```dart
+  try {
+    final result = await llamaParent.sendPrompt(prompt);
+  } catch (e) {
+    if (isNativeCrash(e)) {
+      await llamaParent.clear(); // reset KV cache, model stays loaded
+    }
+  }
+  ```
+  Sends `LlamaClear` to the isolate, which calls `llama.clear()` natively and confirms readiness.
+
 ## 0.3.1 (AdmiralTolwyn fork)
 
 ### New Features

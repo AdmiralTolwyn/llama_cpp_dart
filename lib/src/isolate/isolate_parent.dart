@@ -288,6 +288,14 @@ class LlamaParent {
     }
   }
 
+  /// Clears the KV cache and resets the context without unloading the model.
+  /// Use this to recover memory after a native inference error.
+  Future<void> clear() async {
+    if (_status != LlamaStatus.disposed) {
+      await _sendCommand(LlamaClear(), "context clear");
+    }
+  }
+
   Future<List<double>> getEmbeddings(String prompt) async {
     if (!loadCommand.contextParams.embeddings) {
       throw StateError("Not configured for embeddings.");
