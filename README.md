@@ -4,10 +4,12 @@
 
 A high-performance Dart binding for llama.cpp, enabling advanced text generation capabilities in both Dart and Flutter applications with flexible integration options.
 
-## What's New in This Fork (v0.3.2)
+## What's New in This Fork (v0.3.4)
 
 | Feature | Status |
 |---------|--------|
+| **Chunked prompt prefill** (v0.3.4) | `setPrompt` splits prompts > `nBatch` into chunks — no more `Prompt tokens > batch capacity` errors |
+| **Multi-platform plugin** (v0.3.3) | Android / iOS / macOS / Linux / Windows declared in `pubspec.yaml` |
 | **Latest llama.cpp** (~b8900+, Apr 2026) | All new model architectures (Gemma 4, Qwen 3.5, etc.) |
 | **Grammar Sampling** (GBNF) | Constrain output to valid JSON via `SamplerParams.grammarStr` |
 | **JSON Schema → GBNF** | `JsonSchemaToGbnf.convert(schema)` — auto-generate grammar from schema |
@@ -34,15 +36,25 @@ dependencies:
       ref: main
 ```
 
-### Important: Batch Size Configuration
+### Batch Size Configuration
 
-> **`nBatch` MUST equal `nCtx`**. The default batch size (512) silently rejects any prompt exceeding 512 tokens. Set it when creating context params:
+As of **v0.3.4**, `nBatch` no longer needs to match `nCtx`. The wrapper now
+chunks long prompts internally (matching `llama.rn` / `llama.cpp` CLI behavior),
+so you can keep `nBatch` small to control the per-layer compute buffer size.
 
 ```dart
 final contextParams = ContextParams()
   ..nCtx = 32768
-  ..nBatch = 32768; // Default 512 is too small for real prompts
+  ..nBatch = 512   // safe — prompts > nBatch are chunked automatically
+  ..nUbatch = 512;
 ```
+
+Keeping `nBatch` modest (e.g. 512) is recommended on memory-constrained
+devices: a large `nBatch` inflates the per-layer compute buffer and can OOM
+larger models (4B+) on iPhone / mid-range Android.
+
+> **Older versions (≤ v0.3.3):** `nBatch` had to be ≥ the prompt token count.
+> Upgrade to v0.3.4+ if you hit `Prompt tokens (N) > batch capacity (M)`.
 
 ### Important: Stream Lifecycle
 
