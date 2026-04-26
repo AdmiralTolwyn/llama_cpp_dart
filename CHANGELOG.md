@@ -1,3 +1,18 @@
+## 0.3.6 (AdmiralTolwyn fork)
+
+### New Features
+* **`ChatMLFormat(noThink: true)`** — appends an empty `<think>\n\n</think>\n\n`
+  block immediately after every `<|im_start|>assistant\n` opener. This is the
+  canonical Qwen 3 "thinking off" trick (equivalent to `enable_thinking=False`
+  in the official Jinja template) and forces the model to skip chain-of-thought
+  and answer directly. Without it, Qwen 3 / DeepSeek-R1 distills emit long
+  `<think>...</think>` sections that can burn through the entire context window
+  before producing any real output.
+
+* **`TemplateRouter` auto-detection of thinking models** — Qwen 3, Qwen 3.5,
+  QwQ, DeepSeek-R1, and R1-distill filenames now route to `ChatMLFormat(noThink:
+  true)` automatically. Qwen 2 / 2.5 and base DeepSeek keep plain ChatML.
+
 ## 0.3.5 (AdmiralTolwyn fork)
 
 ### Bug Fixes

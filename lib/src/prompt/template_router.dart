@@ -64,9 +64,16 @@ class TemplateRouter {
       return ChatMLFormat();
     }
 
-    // Qwen family (Alibaba) — uses ChatML (<|im_start|> / <|im_end|>)
-    // Covers: qwen2, qwen2.5, qwen3, qwen3.5, qwq
-    if (_matches(s, ['qwen', 'qwq'])) {
+    // Qwen 3 / 3.5 / QwQ family — ChatML with empty <think> block to disable
+    // the model's chain-of-thought (Qwen3's `enable_thinking=False` trick).
+    // Without this, Qwen 3 emits long <think>...</think> sections and burns
+    // through the context window before producing its real answer.
+    if (_matches(s, ['qwen-3', 'qwen3', 'qwen 3', 'qwen-3.5', 'qwen3.5', 'qwq'])) {
+      return ChatMLFormat(noThink: true);
+    }
+
+    // Qwen 2 / Qwen 2.5 / older Qwen — plain ChatML, no thinking mode.
+    if (_matches(s, ['qwen'])) {
       return ChatMLFormat();
     }
 
@@ -80,7 +87,11 @@ class TemplateRouter {
       return ChatMLFormat();
     }
 
-    // DeepSeek — uses ChatML
+    // DeepSeek — uses ChatML. R1 / R1-distill default to chain-of-thought,
+    // so suppress it with the empty <think> block.
+    if (_matches(s, ['deepseek-r1', 'deepseek_r1', 'r1-distill', 'r1_distill'])) {
+      return ChatMLFormat(noThink: true);
+    }
     if (_matches(s, ['deepseek'])) {
       return ChatMLFormat();
     }
