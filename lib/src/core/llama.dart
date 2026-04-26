@@ -531,20 +531,62 @@ class Llama with LoraAdapterMixin {
       }
 
       int batchCapacity = _contextParams?.nBatch ?? 512;
-      if (_nPrompt > batchCapacity) {
-        throw LlamaException(
-            "Prompt tokens ($_nPrompt) > batch capacity ($batchCapacity)");
-      }
 
-      for (int i = 0; i < _nPrompt; i++) {
-        batch.token[i] = _tokens[i];
-        batch.pos[i] = _nPos + i;
-        batch.n_seq_id[i] = 1;
-        batch.seq_id[i] = _batchSeqIds[i];
-        batch.seq_id[i].value = 0;
-        batch.logits[i] = i == _nPrompt - 1 ? 1 : 0;
+      if (_nPrompt <= batchCapacity) {
+        // Fast path: whole prompt fits in one batch. getNext() will decode
+        // and sample on the final token.
+        for (int i = 0; i < _nPrompt; i++) {
+          batch.token[i] = _tokens[i];
+          batch.pos[i] = _nPos + i;
+          batch.n_seq_id[i] = 1;
+          batch.seq_id[i] = _batchSeqIds[i];
+          batch.seq_id[i].value = 0;
+          batch.logits[i] = i == _nPrompt - 1 ? 1 : 0;
+        }
+        batch.n_tokens = _nPrompt;
+      } else {
+        // Chunked prefill: prompt exceeds nBatch. Decode all-but-last chunks
+        // eagerly via llama_decode, then leave the final chunk primed in
+        // `batch` so getNext() can decode + sample as usual.
+        //
+        // This mirrors what llama.rn / llama.cpp's CLI do internally: split
+        // long prompts into nBatch-sized prefill chunks. Without this, callers
+        // are forced to set nBatch = nCtx, which inflates the per-layer
+        // compute buffer and OOMs large models on memory-constrained devices.
+        int processed = 0;
+        while (processed < _nPrompt) {
+          final remaining = _nPrompt - processed;
+          final chunkSize = min(batchCapacity, remaining);
+          final isLastChunk = (processed + chunkSize) == _nPrompt;
+
+          for (int i = 0; i < chunkSize; i++) {
+            batch.token[i] = _tokens[processed + i];
+            batch.pos[i] = _nPos + processed + i;
+            batch.n_seq_id[i] = 1;
+            batch.seq_id[i] = _batchSeqIds[i];
+            batch.seq_id[i].value = 0;
+            // Logits only on the very last token of the very last chunk;
+            // intermediate prefill tokens don't need them.
+            batch.logits[i] = (isLastChunk && i == chunkSize - 1) ? 1 : 0;
+          }
+          batch.n_tokens = chunkSize;
+
+          onProgress?.call(processed + chunkSize, _nPrompt);
+
+          if (isLastChunk) {
+            // Leave batch primed; getNext() decodes + samples and advances _nPos.
+            break;
+          }
+
+          // Eagerly decode this prefill chunk and advance position.
+          if (lib.llama_decode(context, batch) != 0) {
+            throw LlamaException(
+                "Failed to decode prompt chunk at offset $processed (chunkSize=$chunkSize)");
+          }
+          _nPos += chunkSize;
+          processed += chunkSize;
+        }
       }
-      batch.n_tokens = _nPrompt;
       _slots[_currentSlotId]!.nGeneratedTotal = 0;
     } catch (e) {
       _status = LlamaStatus.error;

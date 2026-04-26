@@ -1,3 +1,24 @@
+## 0.3.4 (AdmiralTolwyn fork)
+
+### Bug Fixes
+* **Chunked prompt prefill** — `Llama.setPrompt()` no longer throws
+  `Prompt tokens (N) > batch capacity (M)` when the prompt exceeds `nBatch`.
+  The wrapper now splits long prompts into `nBatch`-sized chunks and decodes
+  them sequentially via `llama_decode`, leaving only the final chunk primed in
+  the batch for `getNext()` to sample. This matches what `llama.rn` and
+  `llama.cpp`'s CLI do natively.
+
+  Practical impact: callers can now keep `nBatch` small (e.g. 512) without
+  losing the ability to send multi-thousand-token prompts. Previously the only
+  workaround was `nBatch = nCtx`, which inflates the per-layer compute buffer
+  and OOMs large models (4B+) on memory-constrained devices like iPhone.
+
+## 0.3.3 (AdmiralTolwyn fork)
+
+### New Features
+* **Multi-platform plugin declaration** — `pubspec.yaml` now declares the
+  package as a Flutter plugin for Android, iOS, macOS, Linux, and Windows.
+
 ## 0.3.2 (AdmiralTolwyn fork)
 
 ### New Features
