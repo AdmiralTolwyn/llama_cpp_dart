@@ -1,6 +1,6 @@
 name: llama_cpp_dart
 description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
-version: 0.3.4 # Chunked prefill in setPrompt — prompts > nBatch no longer throw
+version: 0.3.5 # Fix position math in chunked prefill (off-by-N decode failure)
 homepage: https://github.com/AdmiralTolwyn/llama_cpp_dart
 repository: https://github.com/AdmiralTolwyn/llama_cpp_dart
 

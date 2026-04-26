@@ -1,3 +1,12 @@
+## 0.3.5 (AdmiralTolwyn fork)
+
+### Bug Fixes
+* **Chunked prefill: position math** — 0.3.4 advanced `_nPos` after each chunk
+  *and* used it when computing `batch.pos[i]` for the next chunk, double-counting
+  the offset. Result: `Failed to decode prompt chunk at offset 512` on the
+  second chunk. Fixed by snapshotting `_nPos` once at the start of the chunked
+  loop and computing positions relative to that snapshot.
+
 ## 0.3.4 (AdmiralTolwyn fork)
 
 ### Bug Fixes

@@ -553,6 +553,7 @@ class Llama with LoraAdapterMixin {
         // long prompts into nBatch-sized prefill chunks. Without this, callers
         // are forced to set nBatch = nCtx, which inflates the per-layer
         // compute buffer and OOMs large models on memory-constrained devices.
+        final basePos = _nPos; // snapshot — token i sits at basePos + i
         int processed = 0;
         while (processed < _nPrompt) {
           final remaining = _nPrompt - processed;
@@ -561,7 +562,7 @@ class Llama with LoraAdapterMixin {
 
           for (int i = 0; i < chunkSize; i++) {
             batch.token[i] = _tokens[processed + i];
-            batch.pos[i] = _nPos + processed + i;
+            batch.pos[i] = basePos + processed + i;
             batch.n_seq_id[i] = 1;
             batch.seq_id[i] = _batchSeqIds[i];
             batch.seq_id[i].value = 0;
