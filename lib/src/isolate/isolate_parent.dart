@@ -248,7 +248,6 @@ class LlamaParent {
 
     _currentPromptId = DateTime.now().millisecondsSinceEpoch.toString();
     _promptCompleters[_currentPromptId] = Completer<void>();
-    nextPrompt.idCompleter.complete(_currentPromptId);
 
     _currentScope = nextPrompt.scope;
 
@@ -261,6 +260,11 @@ class LlamaParent {
     final formattedPrompt = messages.isEmpty
         ? (formatter?.formatPrompt(nextPrompt.prompt) ?? nextPrompt.prompt)
         : (formatter?.formatMessages(messages) ?? nextPrompt.prompt);
+
+    // Expose promptId only after prompt formatting is finalized. This avoids a
+    // race where callers mutate `messages` immediately after awaiting sendPrompt,
+    // before the queue worker has consumed them.
+    nextPrompt.idCompleter.complete(_currentPromptId);
 
     _isGenerating = true;
     _status = LlamaStatus.generating;
