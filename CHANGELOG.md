@@ -1,3 +1,15 @@
+## 0.3.7 (AdmiralTolwyn fork)
+
+### Bug Fixes
+* **Prompt queue race in `LlamaParent`** — prompt IDs are now completed only after
+  formatted prompt/messages are finalized inside `_processNextPrompt()`. This
+  prevents callers from mutating `messages` in the tiny window between awaiting
+  `sendPrompt()` and the queue worker consuming those messages.
+
+### iOS Packaging
+* Refreshed `ios/Llama.xcframework` metadata/signatures and bundled slices used
+  by the current fork build pipeline.
+
 ## 0.3.6 (AdmiralTolwyn fork)
 
 ### New Features
