@@ -1563,4 +1563,3 @@ extern "C" {
 #endif
 
 #endif // LLAMA_H
-// qwen35 rebuild Sat Apr 25 00:45:55 CEST 2026

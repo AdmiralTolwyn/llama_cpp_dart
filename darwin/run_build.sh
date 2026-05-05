@@ -16,8 +16,6 @@ build_for_platform() {
     local platform="$1"
     local build_dir="build_${platform}"
     local output_dir="${output_base_dir}/bin/${platform}"
-    local shared_libs="ON"
-    local lib_extension="dylib"
     local deployment_target=13.3
 
     echo "Building for platform: ${platform} with deployment target iOS ${deployment_target}"
@@ -26,8 +24,11 @@ build_for_platform() {
     mkdir -p "${build_dir}"
     cd "${build_dir}"
 
+    # Build as STATIC libraries — we'll merge them into a single dylib below.
+    # This avoids nested Frameworks/ inside the .framework bundle, which Apple
+    # rejects for App Store submission (ITMS-90206).
     cmake -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
-          -DBUILD_SHARED_LIBS=${shared_libs} \
+          -DBUILD_SHARED_LIBS=OFF \
           -DLLAMA_CURL=OFF \
           -DLLAMA_BUILD_TESTS=OFF \
           -DLLAMA_BUILD_EXAMPLES=OFF \
@@ -47,75 +48,72 @@ build_for_platform() {
           -DENABLE_STRICT_TRY_COMPILE=1 \
           -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM="${dev_team}" \
           -DCMAKE_XCODE_ATTRIBUTE_ENABLE_BITCODE=NO \
-          -DCMAKE_INSTALL_RPATH="@loader_path/Frameworks" \
           -DCMAKE_INSTALL_PREFIX="./install" \
           ..
 
     cmake --build . --config Release --parallel
     cmake --install . --config Release
 
-    # Copy libraries WITHOUT post-processing that strips iOS info
     mkdir -p "${output_dir}"
-    local libs=(
-        "install/lib/libllama.${lib_extension}"
-        "install/lib/libggml.${lib_extension}"
-        "install/lib/libggml-base.${lib_extension}"
-        "install/lib/libggml-metal.${lib_extension}"
-        "install/lib/libggml-cpu.${lib_extension}"
-        "install/lib/libggml-blas.${lib_extension}"
-        "install/lib/libmtmd.${lib_extension}"
-    )
 
-    for lib in "${libs[@]}"; do
+    # Collect all static libraries produced by the build
+    # NOTE: We skip libllama-common.a — it's the CLI utility library that
+    # requires httplib/curl and is NOT used by the Dart FFI bindings.
+    local static_libs=()
+    for lib in install/lib/libllama.a install/lib/libggml.a install/lib/libggml-base.a \
+               install/lib/libggml-metal.a install/lib/libggml-cpu.a \
+               install/lib/libggml-blas.a install/lib/libmtmd.a; do
         if [ -f "$lib" ]; then
-            # Copy library directly without rpath modification
-            cp "$lib" "${output_dir}/"
-            local output_lib="${output_dir}/$(basename "$lib")"
-            
-            # Only set the install name, don't modify rpaths
-            install_name_tool -id "@rpath/$(basename "$lib")" "$output_lib"
-
-            # Fix all versioned dependencies (.X.dylib -> .dylib)
-            # First, get actual dependencies from the library
-            if otool -L "$output_lib" 2>/dev/null | grep -q "@rpath/"; then
-                echo "  Fixing dependencies for $(basename "$output_lib")..."
-                
-                # Extract actual versioned dependencies and fix them
-                otool -L "$output_lib" | grep "@rpath/" | awk '{print $1}' | while read -r dep_path; do
-                    # Extract the dependency name (e.g., "@rpath/libllama.0.dylib")
-                    dep_name=$(basename "$dep_path")
-                    
-                    # Check if it's a versioned dylib (e.g., libllama.0.dylib, libggml.1.dylib, etc.)
-                    if [[ "$dep_name" =~ ^(.+)\.[0-9]+\.dylib$ ]]; then
-                        base_name="${BASH_REMATCH[1]}.dylib"
-                        
-                        echo "    Changing: $dep_name -> $base_name"
-                        if install_name_tool -change "@rpath/${dep_name}" "@rpath/${base_name}" "$output_lib" 2>&1; then
-                            echo "    ✅ Successfully changed $dep_name"
-                        else
-                            echo "    ⚠️  Warning: Could not change $dep_name"
-                        fi
-                    fi
-                done
-            else
-                echo "  No @rpath dependencies found in $(basename "$output_lib")"
-            fi
-            
-            # Minimal signing to preserve iOS load commands
-            codesign --remove-signature "$output_lib" 2>/dev/null || true
-            codesign --force --sign - "$output_lib" 2>/dev/null || true
-            
-            # Verify iOS version info is preserved
-            if otool -l "$output_lib" | grep -q "LC_VERSION_MIN_IPHONEOS\|LC_BUILD_VERSION"; then
-                echo "✅ $(basename "$lib") - iOS version info preserved"
-            else
-                echo "❌ $(basename "$lib") - iOS version info lost"
-            fi
+            static_libs+=("$lib")
+            echo "  Found static lib: $(basename "$lib")"
         else
-            echo "❌ $lib not found"
+            echo "  ⚠️  Not found (optional): $(basename "$lib")"
         fi
     done
 
+    # Determine linker flags based on platform
+    local platform_flags=""
+    case "$platform" in
+        OS64)
+            platform_flags="-arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path) -miphoneos-version-min=${deployment_target}"
+            ;;
+        SIMULATORARM64)
+            platform_flags="-arch arm64 -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path) -mios-simulator-version-min=${deployment_target}"
+            ;;
+        SIMULATOR64)
+            platform_flags="-arch x86_64 -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path) -mios-simulator-version-min=${deployment_target}"
+            ;;
+        MAC_ARM64)
+            platform_flags="-arch arm64 -isysroot $(xcrun --sdk macosx --show-sdk-path) -mmacosx-version-min=12.0"
+            ;;
+    esac
+
+    # Merge all static libs into a single shared libllama.dylib
+    echo "🔗 Linking all static libs into single libllama.dylib..."
+    xcrun clang++ -dynamiclib \
+        ${platform_flags} \
+        -install_name "@rpath/libllama.dylib" \
+        -Wl,-all_load \
+        "${static_libs[@]}" \
+        -framework Accelerate \
+        -framework Metal \
+        -framework MetalKit \
+        -framework Foundation \
+        -lc++ \
+        -o "${output_dir}/libllama.dylib"
+
+    # Ad-hoc sign
+    codesign --remove-signature "${output_dir}/libllama.dylib" 2>/dev/null || true
+    codesign --force --sign - "${output_dir}/libllama.dylib"
+
+    # Verify
+    if otool -l "${output_dir}/libllama.dylib" | grep -q "LC_VERSION_MIN_IPHONEOS\|LC_BUILD_VERSION"; then
+        echo "✅ libllama.dylib - platform info preserved"
+    else
+        echo "❌ libllama.dylib - platform info missing"
+    fi
+
+    echo "📦 Single dylib: $(du -h "${output_dir}/libllama.dylib" | cut -f1)"
     cd ..
 }
 

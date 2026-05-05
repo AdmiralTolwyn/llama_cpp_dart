@@ -7,15 +7,14 @@ set -euo pipefail
 FRAMEWORK_NAME="Llama"
 MAIN_LIB_NAME="libllama.dylib"
 FRAMEWORK_VERSION="0.1.0"
-FRAMEWORK_ID="io.github.netdur.llama_cpp_dart"
+FRAMEWORK_ID="io.github.netdur.llamacppdart"
 
 MIN_IOS_VERSION="13.0"
 MIN_MACOS_VERSION="12.0"
 
-DEPENDENCY_LIBS=(
-  "libggml.dylib" "libggml-metal.dylib" "libggml-base.dylib"
-  "libggml-cpu.dylib" "libggml-blas.dylib" "libmtmd.dylib"
-)
+# All dependencies are now statically linked into libllama.dylib.
+# No nested Frameworks/ needed (Apple rejects nested frameworks for App Store).
+DEPENDENCY_LIBS=()
 
 # paths where YOUR build system placed the thin architectures
 IOS_DEVICE_LIB_DIR="bin/OS64"
@@ -81,19 +80,11 @@ build_slice() {
   local TARGET_DIR=$1 PLATFORM=$2 MIN_OS=$3 MAIN_LIB=$4 DEP_DIR=$5
 
   echo "▶️  Building slice: $PLATFORM"
-  mkdir -p "$TARGET_DIR/Headers" "$TARGET_DIR/Frameworks"
+  mkdir -p "$TARGET_DIR/Headers"
 
-  # main dylib
+  # main dylib (single monolithic binary — all ggml libs linked statically)
   cp "$MAIN_LIB" "$TARGET_DIR/$EXECUTABLE_NAME"
   install_name_tool -id "$INSTALL_NAME" "$TARGET_DIR/$EXECUTABLE_NAME"
-
-  # dependencies
-  for DEP in "${DEPENDENCY_LIBS[@]}"; do
-    [[ -f "$DEP_DIR/$DEP" ]] || { echo "⚠️   missing $DEP in $DEP_DIR"; continue; }
-    cp "$DEP_DIR/$DEP" "$TARGET_DIR/Frameworks/"
-    install_name_tool -change "@rpath/$DEP" "@loader_path/Frameworks/$DEP" \
-                      "$TARGET_DIR/$EXECUTABLE_NAME"
-  done
 
   # headers
   for H in "${HEADER_SOURCE_DIRS[@]}"; do cp -R "$H/." "$TARGET_DIR/Headers/"; done
@@ -109,11 +100,6 @@ build_slice() {
   # ✂️  strip old sigs, 🔏  re-sign
   strip_signature "$TARGET_DIR/$EXECUTABLE_NAME"
   codesign_bin     "$TARGET_DIR/$EXECUTABLE_NAME"
-  for DEP in "${DEPENDENCY_LIBS[@]}"; do
-    [[ -f "$TARGET_DIR/Frameworks/$DEP" ]] || continue
-    strip_signature "$TARGET_DIR/Frameworks/$DEP"
-    codesign_bin     "$TARGET_DIR/Frameworks/$DEP"
-  done
   echo
 }
 
@@ -128,18 +114,11 @@ build_slice "$MACOS_FW" "macOS arm64" \
 
 # iOS Simulator (fat)
 echo "▶️  Building slice: iOS Simulator universal"
-mkdir -p "$IOS_SIM_FW/Headers" "$IOS_SIM_FW/Frameworks"
+mkdir -p "$IOS_SIM_FW/Headers"
 lipo -create "$IOS_SIM_ARM64_LIB_DIR/$MAIN_LIB_NAME" \
               "$IOS_SIM_X86_64_LIB_DIR/$MAIN_LIB_NAME" \
      -output "$IOS_SIM_FW/$EXECUTABLE_NAME"
 install_name_tool -id "$INSTALL_NAME" "$IOS_SIM_FW/$EXECUTABLE_NAME"
-for DEP in "${DEPENDENCY_LIBS[@]}"; do
-  [[ -f "$IOS_SIM_ARM64_LIB_DIR/$DEP" && -f "$IOS_SIM_X86_64_LIB_DIR/$DEP" ]] || continue
-  lipo -create "$IOS_SIM_ARM64_LIB_DIR/$DEP" "$IOS_SIM_X86_64_LIB_DIR/$DEP" \
-       -output "$IOS_SIM_FW/Frameworks/$DEP"
-  install_name_tool -change "@rpath/$DEP" "@loader_path/Frameworks/$DEP" \
-                    "$IOS_SIM_FW/$EXECUTABLE_NAME"
-done
 for H in "${HEADER_SOURCE_DIRS[@]}"; do cp -R "$H/." "$IOS_SIM_FW/Headers/"; done
 sed -e "s/__NAME__/${FRAMEWORK_NAME}/g" \
     -e "s/__EXECUTABLE__/${EXECUTABLE_NAME}/g" \
@@ -148,10 +127,6 @@ sed -e "s/__NAME__/${FRAMEWORK_NAME}/g" \
     -e "s/__MIN_OS_VERSION__/${MIN_IOS_VERSION}/g" \
     "$PLIST_TEMPLATE" > "$IOS_SIM_FW/Info.plist"
 strip_signature "$IOS_SIM_FW/$EXECUTABLE_NAME";   codesign_bin "$IOS_SIM_FW/$EXECUTABLE_NAME"
-for DEP in "${DEPENDENCY_LIBS[@]}"; do
-  [[ -f "$IOS_SIM_FW/Frameworks/$DEP" ]] || continue
-  strip_signature "$IOS_SIM_FW/Frameworks/$DEP"; codesign_bin "$IOS_SIM_FW/Frameworks/$DEP"
-done
 echo
 
 ###############################################################################
