@@ -9,7 +9,7 @@ MAIN_LIB_NAME="libllama.dylib"
 FRAMEWORK_VERSION="0.1.0"
 FRAMEWORK_ID="io.github.netdur.llamacppdart"
 
-MIN_IOS_VERSION="13.0"
+MIN_IOS_VERSION="16.4"
 MIN_MACOS_VERSION="12.0"
 
 # All dependencies are now statically linked into libllama.dylib.

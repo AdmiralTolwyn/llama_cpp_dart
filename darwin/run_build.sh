@@ -16,9 +16,14 @@ build_for_platform() {
     local platform="$1"
     local build_dir="build_${platform}"
     local output_dir="${output_base_dir}/bin/${platform}"
-    local deployment_target=13.3
 
-    echo "Building for platform: ${platform} with deployment target iOS ${deployment_target}"
+    # macOS uses a different deployment target than iOS
+    local deployment_target=16.4
+    if [[ "$platform" == "MAC_ARM64" ]]; then
+        deployment_target=12.0
+    fi
+
+    echo "Building for platform: ${platform} with deployment target ${deployment_target}"
     
     rm -rf "${build_dir}"
     mkdir -p "${build_dir}"
