@@ -134,7 +134,11 @@ class LlamaParent {
     }
 
     if (data.text.isNotEmpty) {
-      _controller.add(data.text);
+      // Defensive isClosed check: dispose() may have closed the controller in
+      // a different microtask while the child was still flushing tokens.
+      if (!_controller.isClosed) {
+        _controller.add(data.text);
+      }
       for (final scope in _scopes) {
         scope.handleResponse(data);
       }
@@ -154,7 +158,10 @@ class LlamaParent {
       final success = data.status != LlamaStatus.error;
       final event = CompletionEvent(promptId, success, data.errorDetails);
 
-      _completionController.add(event);
+      // Defensive isClosed check: see comment on _controller.add above.
+      if (!_completionController.isClosed) {
+        _completionController.add(event);
+      }
       for (final scope in _scopes) {
         scope.handleCompletion(event);
       }
@@ -196,10 +203,21 @@ class LlamaParent {
   }
 
   Future<void> _sendCommand(LlamaCommand command, String description) async {
+    // If a previous _sendCommand is still pending (e.g. because the caller
+    // issued a clear() while a load was in flight), supersede it with an
+    // explicit error instead of silently dropping its completer. Without this,
+    // the previous future would only resolve via its 30s/60s timeout.
+    final previous = _operationCompleter;
+    if (previous != null && !previous.isCompleted) {
+      previous.completeError(
+        StateError('Operation superseded by: $description'),
+      );
+    }
     _operationCompleter = Completer<void>();
+    final current = _operationCompleter!;
     _parent.sendToChild(data: command, id: 1);
 
-    return await _operationCompleter!.future.timeout(
+    return await current.future.timeout(
       Duration(seconds: description == "model loading" ? 60 : 30),
       onTimeout: () {
         if (command is LlamaStop) {
@@ -242,8 +260,24 @@ class LlamaParent {
     final nextPrompt = _promptQueue.removeAt(0);
 
     if (_isGenerating) {
+      // Cancel the in-flight generation, then wait for the child to actually
+      // emit isDone for the previous prompt before queuing the next one.
+      // The previous fork used a 10ms Future.delayed here, which raced on slow
+      // devices: the next LlamaPrompt could land while the child was still
+      // draining the prior generation, causing tokens to be tagged with the
+      // wrong promptId.
+      final previousPromptId = _currentPromptId;
       await stop();
-      await Future.delayed(const Duration(milliseconds: 10));
+      final previousCompleter = _promptCompleters[previousPromptId];
+      if (previousCompleter != null && !previousCompleter.isCompleted) {
+        try {
+          await previousCompleter.future
+              .timeout(const Duration(seconds: 2));
+        } catch (_) {
+          // Best-effort drain; proceed even if the prior prompt never
+          // confirmed completion (worst case the child has already moved on).
+        }
+      }
     }
 
     _currentPromptId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -328,16 +362,17 @@ class LlamaParent {
     }
     _scopes.clear();
 
+    // Tell the child to dispose, give it a brief moment to flush any final
+    // confirmations, THEN cancel the subscription, THEN close the controllers.
+    // The previous order closed controllers first, which caused
+    // "Cannot add new events after calling close" when the child emitted any
+    // late tokens or the dispose acknowledgement during the drain window.
+    _parent.sendToChild(id: 1, data: LlamaDispose());
+    await Future.delayed(const Duration(milliseconds: 50));
+    await _subscription?.cancel();
+
     if (!_controller.isClosed) await _controller.close();
     if (!_completionController.isClosed) await _completionController.close();
-
-    _parent.sendToChild(id: 1, data: LlamaDispose());
-
-    // Keep the subscription alive long enough to receive confirmations while
-    // slots are being freed and the child is disposing.
-    await Future.delayed(const Duration(milliseconds: 50));
-
-    await _subscription?.cancel();
 
     _parent.dispose();
   }

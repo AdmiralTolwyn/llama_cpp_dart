@@ -54,10 +54,13 @@ fix_rpaths() {
     # Add standard framework paths for macOS
     install_name_tool -add_rpath "@executable_path/Frameworks" "$lib_file" 2>/dev/null || true
     install_name_tool -add_rpath "@loader_path/Frameworks" "$lib_file" 2>/dev/null || true
-    
-    # Add absolute path only for macOS
-    ABSOLUTE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/${LIB_DIR}" && pwd)"
-    install_name_tool -add_rpath "$ABSOLUTE_LIB_DIR" "$lib_file" 2>/dev/null || true
+
+    # NOTE: We deliberately do NOT add an absolute path rpath here.
+    # An earlier version added "$(cd dirname/...)" which baked the build
+    # machine's filesystem path into the dylib, breaking reproducibility and
+    # making the dylib fail to load if the framework is relocated. The
+    # @loader_path/@executable_path entries above are sufficient when the
+    # dylib is embedded in an app bundle's Frameworks directory.
   fi
 
   # Fix dependencies (same for both platforms)

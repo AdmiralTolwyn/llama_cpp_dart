@@ -42,26 +42,29 @@ class ParallelRequest {
 
   void fail(String error) {
     if (!_completer.isCompleted) {
-      _completer.complete(null);
+      _completer.completeError(error);
     }
   }
 }
 
-/// Manages slot-based parallel request processing for concurrent
-/// completion requests.
+/// Sequential request queue with the surface of llama.rn's `parallel` API.
 ///
-/// Mirrors llama.rn's `context.parallel` API:
-/// - `enable(nParallel)` — configure slot count
-/// - `completion(params, onToken)` — queue a request
-/// - `disable()` — teardown
+/// **NOT actually parallel.** Despite the name and the `nParallel` parameter,
+/// this implementation processes requests one at a time via the supplied
+/// [GenerateFunction]. Requests block each other. The `nParallel` value is
+/// accepted for API compatibility with llama.rn but is not honoured today.
 ///
-/// Since llama_cpp_dart uses an isolate-based architecture, true parallel
-/// decoding requires native-level changes. This wrapper provides a
-/// sequential queue that processes requests one at a time but provides
-/// the same API surface for future native parallel support.
+/// True parallel decoding requires native-level seq_id slot scheduling, which
+/// lives in [LlamaService] (different code path). This wrapper exists so code
+/// written against llama.rn's `enable`/`completion`/`disable` shape can run
+/// against this binding without modification.
+///
+/// If you need actual concurrency, use [LlamaService] directly with
+/// per-session seq_ids and the round-robin scheduler.
 class ParallelDecoder {
   final GenerateFunction _generate;
-  int _nParallel;
+  // ignore: unused_field
+  int _nParallel; // accepted for API compatibility; ignored by _processQueue.
   bool _enabled = false;
   final _queue = <ParallelRequest>[];
   bool _processing = false;
@@ -73,10 +76,12 @@ class ParallelDecoder {
         _nParallel = nParallel;
 
   bool get isEnabled => _enabled;
+  /// Configured slot count. **Not honoured** — see class docs.
   int get slotCount => _nParallel;
   int get queueLength => _queue.length;
 
-  /// Enable parallel mode with N slots.
+  /// Enable the queue. The `nParallel` argument is accepted for API parity
+  /// with llama.rn but is ignored — see class docs.
   void enable({int nParallel = 2}) {
     _nParallel = nParallel;
     _enabled = true;

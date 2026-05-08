@@ -1,6 +1,6 @@
 name: llama_cpp_dart
 description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
-version: 0.3.6 # ChatMLFormat noThink + auto-route Qwen 3 / DeepSeek-R1 to non-thinking
+version: 0.3.8 # Tier A audit fixes: dispose race, completer collision, chunked prefill rollback, isolate ack, ParallelDecoder honesty, Android SDK alignment, fix_rpath portability
 homepage: https://github.com/AdmiralTolwyn/llama_cpp_dart
 repository: https://github.com/AdmiralTolwyn/llama_cpp_dart
 

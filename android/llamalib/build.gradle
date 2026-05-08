@@ -4,7 +4,10 @@ plugins {
 
 android {
     namespace 'io.github.netdur.llama_cpp_dart.llamalib'
-    compileSdk 36
+    // Aligned with the parent plugin (android/build.gradle compileSdkVersion 34).
+    // The earlier mismatch (llamalib=36, plugin=34) caused intermittent
+    // AndroidX version conflicts and gradle warnings in consumer apps.
+    compileSdk 34
     // Use the NDK declared in the app's build.gradle so developers don't need
     // to install a specific NDK version just for this plugin.
     ndkVersion android.ndkVersion

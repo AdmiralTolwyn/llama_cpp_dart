@@ -554,38 +554,59 @@ class Llama with LoraAdapterMixin {
         // are forced to set nBatch = nCtx, which inflates the per-layer
         // compute buffer and OOMs large models on memory-constrained devices.
         final basePos = _nPos; // snapshot — token i sits at basePos + i
+        // Snapshot for rollback: if a mid-chunk decode fails we must restore
+        // _nPos to the pre-chunked-prefill value AND clear the KV cache,
+        // because earlier chunks already laid tokens into native memory at
+        // basePos..basePos+processed. Without rollback, a caller that catches
+        // the LlamaException and retries setPrompt() would silently lay the
+        // new prompt at a stale offset.
+        final preChunkedNPos = _nPos;
         int processed = 0;
-        while (processed < _nPrompt) {
-          final remaining = _nPrompt - processed;
-          final chunkSize = min(batchCapacity, remaining);
-          final isLastChunk = (processed + chunkSize) == _nPrompt;
+        try {
+          while (processed < _nPrompt) {
+            final remaining = _nPrompt - processed;
+            final chunkSize = min(batchCapacity, remaining);
+            final isLastChunk = (processed + chunkSize) == _nPrompt;
 
-          for (int i = 0; i < chunkSize; i++) {
-            batch.token[i] = _tokens[processed + i];
-            batch.pos[i] = basePos + processed + i;
-            batch.n_seq_id[i] = 1;
-            batch.seq_id[i] = _batchSeqIds[i];
-            batch.seq_id[i].value = 0;
-            // Logits only on the very last token of the very last chunk;
-            // intermediate prefill tokens don't need them.
-            batch.logits[i] = (isLastChunk && i == chunkSize - 1) ? 1 : 0;
+            for (int i = 0; i < chunkSize; i++) {
+              batch.token[i] = _tokens[processed + i];
+              batch.pos[i] = basePos + processed + i;
+              batch.n_seq_id[i] = 1;
+              batch.seq_id[i] = _batchSeqIds[i];
+              batch.seq_id[i].value = 0;
+              // Logits only on the very last token of the very last chunk;
+              // intermediate prefill tokens don't need them.
+              batch.logits[i] = (isLastChunk && i == chunkSize - 1) ? 1 : 0;
+            }
+            batch.n_tokens = chunkSize;
+
+            onProgress?.call(processed + chunkSize, _nPrompt);
+
+            if (isLastChunk) {
+              // Leave batch primed; getNext() decodes + samples and advances _nPos.
+              break;
+            }
+
+            // Eagerly decode this prefill chunk and advance position.
+            if (lib.llama_decode(context, batch) != 0) {
+              throw LlamaException(
+                  "Failed to decode prompt chunk at offset $processed (chunkSize=$chunkSize)");
+            }
+            _nPos += chunkSize;
+            processed += chunkSize;
           }
-          batch.n_tokens = chunkSize;
-
-          onProgress?.call(processed + chunkSize, _nPrompt);
-
-          if (isLastChunk) {
-            // Leave batch primed; getNext() decodes + samples and advances _nPos.
-            break;
+        } catch (_) {
+          // Roll back: discard partial KV cache state and restore _nPos so
+          // the caller can retry from a clean slate after handling the error.
+          if (_isInitialized && context.address != 0) {
+            try {
+              final mem = lib.llama_get_memory(context);
+              lib.llama_memory_clear(mem, true);
+            } catch (_) {}
           }
-
-          // Eagerly decode this prefill chunk and advance position.
-          if (lib.llama_decode(context, batch) != 0) {
-            throw LlamaException(
-                "Failed to decode prompt chunk at offset $processed (chunkSize=$chunkSize)");
-          }
-          _nPos += chunkSize;
-          processed += chunkSize;
+          _nPos = preChunkedNPos;
+          batch.n_tokens = 0;
+          rethrow;
         }
       }
       _slots[_currentSlotId]!.nGeneratedTotal = 0;

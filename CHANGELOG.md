@@ -1,14 +1,56 @@
-## 0.3.7 (AdmiralTolwyn fork)
+## 0.3.8 (AdmiralTolwyn fork)
 
 ### Bug Fixes
-* **Prompt queue race in `LlamaParent`** — prompt IDs are now completed only after
-  formatted prompt/messages are finalized inside `_processNextPrompt()`. This
-  prevents callers from mutating `messages` in the tiny window between awaiting
-  `sendPrompt()` and the queue worker consuming those messages.
+* **`LlamaParent.dispose()` use-after-close race** — the previous order closed
+  `_controller` and `_completionController` *before* cancelling the child
+  isolate subscription, then awaited 50ms for the child to drain. Any token
+  or completion event the child emitted during that window threw
+  `Bad state: Cannot add new events after calling close`. Dispose now sends
+  `LlamaDispose`, drains for 50ms, cancels the subscription, and only then
+  closes the broadcast controllers. Defensive `isClosed` checks were also
+  added in `_onData` for the text and completion branches.
+* **`_operationCompleter` silent drop on collision** — `_sendCommand()`
+  blindly reassigned `_operationCompleter` on every call. If a previous
+  command (e.g. `loadState()`) was still pending when `clear()` was issued,
+  the previous future would only resolve via its 30s/60s timeout. Now any
+  pending operation is explicitly completed with a
+  `StateError('Operation superseded by: ...')` before being replaced.
+* **`Llama.setPrompt()` chunked prefill: stale `_nPos` on mid-chunk failure**
+  — if `llama_decode` returned non-zero on a non-final chunk, `_nPos` was
+  left advanced for the chunks already decoded, while the catch block only
+  freed the token buffer. A caller that recovered from the exception and
+  retried `setPrompt()` would silently lay the new prompt at a stale offset,
+  producing garbage. The chunked path now snapshots `_nPos` and, on any
+  decode failure, clears the KV cache and restores the snapshot before
+  rethrowing.
+* **`LlamaParent._processNextPrompt()` magic 10ms race** — the previous
+  `await stop(); await Future.delayed(10ms)` between consecutive prompts
+  raced on slow devices: the next `LlamaPrompt` could land while the child
+  was still draining the prior generation, causing tokens to be tagged with
+  the wrong `promptId`. The 10ms sleep is replaced with an actual await on
+  the previous prompt's completion future (capped at 2s as a defensive
+  ceiling).
 
-### iOS Packaging
-* Refreshed `ios/Llama.xcframework` metadata/signatures and bundled slices used
-  by the current fork build pipeline.
+### API Honesty
+* **`ParallelDecoder` no longer claims to be parallel** — the implementation
+  is and always was a strict FIFO that calls the supplied `_generate` once
+  at a time. The class docs, `nParallel` parameter, and `slotCount` getter
+  now state explicitly that the value is accepted for llama.rn API parity
+  but is not honoured. For real concurrency, use `LlamaService` with seq_id
+  slots. `ParallelRequest.fail()` now resolves with `completeError(...)`
+  instead of `complete(null)` so callers can distinguish failure from an
+  empty model response.
+
+### Native Packaging
+* **Android `minSdk`/`compileSdk` alignment** — `android/build.gradle`
+  declared `minSdkVersion 23` while `android/llamalib/build.gradle`
+  declared `minSdk 24` and `compileSdk 36`. Consumer apps targeting SDK 23
+  hit Gradle resolution failures. Both files now declare `minSdk 24` and
+  `compileSdk 34`.
+* **`darwin/fix_rpath.sh` no longer bakes an absolute build-machine path**
+  into the macOS dylib's rpath. Builds are now reproducible across machines
+  and the dylib survives relocation (the `@loader_path/Frameworks` and
+  `@executable_path/Frameworks` entries already cover bundle embedding).
 
 ## 0.3.6 (AdmiralTolwyn fork)
 
