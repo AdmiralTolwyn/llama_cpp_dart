@@ -70,6 +70,7 @@ class LlamaLogger {
         4 => '[LLAMA ERR]',
         _ => '[LLAMA]',
       };
+      // ignore: avoid_print
       print('$prefix $msg');
     }
   }
@@ -77,4 +78,36 @@ class LlamaLogger {
   /// Returns true if a Dart-side message at [level] should be emitted.
   static bool shouldLogDart(LlamaLogLevel level) =>
       level.index >= _dartLevel.index && _dartLevel != LlamaLogLevel.none;
+
+  /// Emits a debug message to stdout if [_dartLevel] permits.
+  static void debug(String msg) {
+    if (shouldLogDart(LlamaLogLevel.debug)) {
+      // ignore: avoid_print
+      print('[llama_cpp_dart DBG] $msg');
+    }
+  }
+
+  /// Emits an info message to stdout if [_dartLevel] permits.
+  static void info(String msg) {
+    if (shouldLogDart(LlamaLogLevel.info)) {
+      // ignore: avoid_print
+      print('[llama_cpp_dart INF] $msg');
+    }
+  }
+
+  /// Emits a warning message to stdout if [_dartLevel] permits.
+  static void warn(String msg) {
+    if (shouldLogDart(LlamaLogLevel.warn)) {
+      // ignore: avoid_print
+      print('[llama_cpp_dart WRN] $msg');
+    }
+  }
+
+  /// Emits an error message to stdout if [_dartLevel] permits.
+  static void error(String msg) {
+    if (shouldLogDart(LlamaLogLevel.error)) {
+      // ignore: avoid_print
+      print('[llama_cpp_dart ERR] $msg');
+    }
+  }
 }

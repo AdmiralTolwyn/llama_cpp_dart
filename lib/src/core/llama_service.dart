@@ -8,6 +8,7 @@ import 'package:ffi/ffi.dart';
 
 import 'context_params.dart';
 import 'llama.dart' show Llama;
+import 'llama_log_level.dart';
 import 'llama_types.dart';
 import 'llama_cpp.dart';
 import 'llama_input.dart';
@@ -105,8 +106,7 @@ class LlamaService {
 
     final ptr = lib.llama_print_system_info();
     final sysInfo = ptr.cast<Utf8>().toDartString();
-    // ignore: avoid_print
-    print(sysInfo);
+    LlamaLogger.info(sysInfo);
 
     // Vision (optional)
     if (mmprojPath != null && mmprojPath.isNotEmpty) {
@@ -203,8 +203,7 @@ class LlamaService {
     if (savedFile.existsSync()) {
       session.tier = SessionTier.cold;
       session.coldFilePath = savedPath;
-      // ignore: avoid_print
-      print("Found persisted session $sessionId at $savedPath");
+      LlamaLogger.info('Found persisted session $sessionId at $savedPath');
     } else {
       session.tier = SessionTier.warm;
     }
@@ -292,8 +291,7 @@ class LlamaService {
 
     session.lastActiveTime = DateTime.now();
     if (session.tier != SessionTier.hot) {
-      // ignore: avoid_print
-      print("Restoring session $sessionId from ${session.tier}...");
+      LlamaLogger.info('Restoring session $sessionId from ${session.tier}...');
       await _restoreSession(session);
       if (session.status != LlamaStatus.generating) {
         throw LlamaException("Request cancelled during session restore.");
@@ -484,8 +482,7 @@ class LlamaService {
   ) async* {
     session.lastActiveTime = DateTime.now();
     if (session.tier != SessionTier.hot) {
-      // ignore: avoid_print
-      print("Restoring session ${session.id} from ${session.tier}...");
+      LlamaLogger.info('Restoring session ${session.id} from ${session.tier}...');
       await _restoreSession(session);
       if (session.status != LlamaStatus.generating) {
         throw LlamaException("Request cancelled during session restore.");
@@ -612,9 +609,8 @@ class LlamaService {
           final currentRssMb = ProcessInfo.currentRss / (1024 * 1024);
           if (currentRssMb > maxSystemRamMb) {
             if (_verbose) {
-              // ignore: avoid_print
-              print(
-                "RAM Pressure: ${currentRssMb.round()}MB > ${maxSystemRamMb}MB. Archiving warm sessions...",
+              LlamaLogger.warn(
+                'RAM Pressure: ${currentRssMb.round()}MB > ${maxSystemRamMb}MB. Archiving warm sessions...',
               );
             }
 
@@ -709,8 +705,7 @@ class LlamaService {
                   -nShift,
                 );
                 session.nPos -= nShift;
-                // ignore: avoid_print
-                print("Context Shifted");
+                LlamaLogger.info('Context Shifted');
               }
             }
 
@@ -910,8 +905,7 @@ class LlamaService {
         }
       }
     } catch (e, s) {
-      // ignore: avoid_print
-      print("Error in LlamaService run loop: $e\n$s");
+      LlamaLogger.error('Error in LlamaService run loop: $e\n$s');
     }
   }
 
@@ -925,8 +919,7 @@ class LlamaService {
   Future<void> persistAllAndDispose() async {
     if (_disposed) return;
 
-    // ignore: avoid_print
-    print("Initiating graceful shutdown...");
+    LlamaLogger.info('Initiating graceful shutdown...');
 
     if (!_stopSignal.isCompleted) _stopSignal.complete();
 
@@ -937,8 +930,7 @@ class LlamaService {
         try {
           _evictSession(session);
         } catch (e) {
-          // ignore: avoid_print
-          print("Error evicting session ${session.id}: $e");
+          LlamaLogger.error('Error evicting session ${session.id}: $e');
         }
       }
     }
@@ -947,20 +939,17 @@ class LlamaService {
     for (final session in _sessions.values) {
       if (session.tier == SessionTier.warm) {
         saveFutures.add(_archiveSession(session).catchError((e) {
-          // ignore: avoid_print
-          print("Error saving session ${session.id} to disk: $e");
+          LlamaLogger.error('Error saving session ${session.id} to disk: $e');
         }));
       }
     }
 
     if (saveFutures.isNotEmpty) {
-      // ignore: avoid_print
-      print("Persisting ${saveFutures.length} sessions to disk...");
+      LlamaLogger.info('Persisting ${saveFutures.length} sessions to disk...');
       await Future.wait(saveFutures);
     }
 
-    // ignore: avoid_print
-    print("All states saved. Disposing resources.");
+    LlamaLogger.info('All states saved. Disposing resources.');
 
     await dispose();
   }
@@ -976,8 +965,7 @@ class LlamaService {
       try {
         await _loopFuture!.timeout(const Duration(seconds: 2));
       } on TimeoutException {
-        // ignore: avoid_print
-        print("Warning: run loop did not exit cleanly");
+        LlamaLogger.warn('run loop did not exit cleanly');
       }
     }
 
@@ -1090,8 +1078,7 @@ class LlamaService {
     final path = '$sessionHome/${session.id}.state';
     final file = File(path);
     if (_verbose) {
-      // ignore: avoid_print
-      print("Archiving ${session.id} to disk ($path)...");
+      LlamaLogger.info('Archiving ${session.id} to disk ($path)...');
     }
     final wrapped = StateCodec.encode(
       session.stateBuffer!,
@@ -1185,8 +1172,7 @@ class LlamaService {
     final ctxMb = ctxBytes / (1024 * 1024);
 
     // ASCII-only output to keep logs compatible with restricted consoles.
-    // ignore: avoid_print
-    print("""
+    LlamaLogger.info('''
 [Metrics: $sessionId]
 ------------------------------------------
 Speed:       $tps t/s
@@ -1194,7 +1180,7 @@ Tokens:      ${usage.promptTokens} prompt + ${usage.completionTokens} completion
 Context Mem: ${ctxMb.toStringAsFixed(1)} MB (KV Cache)
 App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
 ------------------------------------------
-""");
+''');
   }
 
   ServiceSession _requireSession(String id) {
@@ -1396,8 +1382,7 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
       _sessions[sessionId] = session;
       return true;
     } catch (e) {
-      // ignore: avoid_print
-      print("Error loading session from $path: $e");
+      LlamaLogger.error('Error loading session from $path: $e');
       return false;
     }
   }

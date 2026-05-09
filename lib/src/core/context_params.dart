@@ -63,6 +63,22 @@ class ContextParams {
   int nPredict = -1;
 
   int nCtx = 512;
+
+  /// Batch size for prompt prefill. **Must be `>= nCtx`** for any prompt that
+  /// fills the context window in one shot. The default of 512 is a llama.cpp
+  /// default that silently rejects any prompt larger than 512 tokens with
+  /// `LlamaException: Prompt tokens (N) > batch capacity (512)`.
+  ///
+  /// Recommended pattern:
+  /// ```dart
+  /// final ctx = ContextParams()
+  ///   ..nCtx = 32768
+  ///   ..nBatch = 32768; // match nCtx
+  /// ```
+  ///
+  /// As of 0.3.4 the wrapper supports chunked prefill, so a smaller `nBatch`
+  /// will work for prompts that fit within `nCtx` — but going below `nCtx`
+  /// trades memory for setup latency and is rarely worth it.
   int nBatch = 512;
   int nUbatch = 512;
   int nSeqMax = 1;

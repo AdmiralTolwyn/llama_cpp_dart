@@ -1,3 +1,27 @@
+## 0.3.9 (AdmiralTolwyn fork)
+
+### Hygiene Pass
+* **`llama.cpp` submodule no longer floats on `master`** — `.gitmodules`
+  removed the `branch = master` directive. The submodule is now pinned via the
+  tracked commit (currently tag `b8920`) like any normal git submodule, so a
+  fresh clone reproduces the same llama.cpp source on every machine. Use
+  `./update_submodules.sh` to advance to a newer release intentionally.
+* **CI added** — `.github/workflows/ci.yml` runs `dart analyze lib/` and
+  `flutter test` on every push and PR. No more "compiles on Anton's MacBook"
+  surprises shipping to consumers.
+* **`LICENSE` attribution** — added a fork copyright line alongside the
+  original. The MIT terms are unchanged.
+* **`print()` → `LlamaLogger`** — the 35 raw `print()` calls scattered across
+  `llama.dart`, `llama_service.dart`, `llama_session_io.dart`, the isolate
+  files, and `mcp_client.dart` now go through `LlamaLogger.info/warn/error`.
+  Output is gated by `LlamaLogger.setDartLogLevel(...)`. Setting
+  `LlamaLogLevel.none` (the default) silences the bindings completely;
+  previously you had to live with the prints.
+* **`ContextParams.nBatch` doc warning** — the field now carries a doc comment
+  explaining the historical `Prompt tokens > batch capacity` footgun and the
+  recommended `nBatch == nCtx` pattern. Behaviour unchanged (chunked prefill
+  from 0.3.4 still handles the smaller-`nBatch` case correctly).
+
 ## 0.3.8 (AdmiralTolwyn fork)
 
 ### Bug Fixes

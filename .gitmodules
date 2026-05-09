@@ -1,4 +1,5 @@
 [submodule "src/llama.cpp"]
 	path = src/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp
-	branch = master
+	# Pinned via the submodule's tracked commit (currently tag b8920).
+	# Run `./update_submodules.sh` to advance to a newer release.

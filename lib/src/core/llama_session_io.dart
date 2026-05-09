@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import 'llama_cpp.dart';
+import 'llama_log_level.dart';
 import 'llama_types.dart';
 import 'service/state_codec.dart';
 
@@ -82,9 +83,8 @@ class LlamaStateIO {
 
     final int expectedStateSize = lib.llama_get_state_size(context);
     if (stateData.length - _headerSize != expectedStateSize) {
-      // ignore: avoid_print
-      print(
-          "Warning: State size mismatch. Expected $expectedStateSize, got ${stateData.length - _headerSize}");
+      LlamaLogger.warn(
+          'State size mismatch. Expected $expectedStateSize, got ${stateData.length - _headerSize}');
     }
 
     final ptr = malloc<Uint8>(expectedStateSize);
@@ -136,8 +136,7 @@ class LlamaSessionIO {
       file.writeAsBytesSync(wrapped, flush: true);
 
       if (verbose) {
-        // ignore: avoid_print
-        print("Session saved (Native Wrapper). Size: ${wrapped.length}");
+        LlamaLogger.info('Session saved (Native Wrapper). Size: ${wrapped.length}');
       }
 
       // Cleanup
@@ -167,8 +166,7 @@ class LlamaSessionIO {
       final savedPos = decoded.nPos ?? 0;
       final savedPrompt = decoded.nKeep ?? 0;
       if (verbose) {
-        // ignore: avoid_print
-        print("Custom header found. Saved nPos=$savedPos");
+        LlamaLogger.info('Custom header found. Saved nPos=$savedPos');
       }
 
       // Unwrap Native Blob
@@ -187,8 +185,7 @@ class LlamaSessionIO {
         final result = lib.llama_state_load_file(
             context, tempPathPtr, nullptr, 0, countOut);
         if (verbose) {
-          // ignore: avoid_print
-          print("Native load result: $result");
+          LlamaLogger.info('Native load result: $result');
         }
         if (result) {
           final restoredPos = countOut.value;
@@ -210,9 +207,8 @@ class LlamaSessionIO {
     } else {
       // Fallback: Try Raw Native (no wrapper)
       if (verbose) {
-        // ignore: avoid_print
-        print(
-            "No custom header. Attempting raw native load (nPos resets to 0).");
+        LlamaLogger.info(
+            'No custom header. Attempting raw native load (nPos resets to 0).');
       }
 
       final pathPtr = path.toNativeUtf8().cast<Char>();

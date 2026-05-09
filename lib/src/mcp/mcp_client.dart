@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:typed_data';
 
+import '../core/llama_log_level.dart';
+
 /// Clean MCP client that handles all the protocol stuff
 class MCPClient {
   late final Socket _socket;
@@ -22,8 +24,8 @@ class MCPClient {
     
     _subscription = _socket.listen(
       _handleData,
-      onError: (e) => print('Socket error: $e'),
-      onDone: () => print('Socket closed'),
+      onError: (e) => LlamaLogger.error('MCP socket error: $e'),
+      onDone: () => LlamaLogger.info('MCP socket closed'),
     );
     
     await _call('initialize', {

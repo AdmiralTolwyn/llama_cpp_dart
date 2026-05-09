@@ -4,6 +4,7 @@ import 'package:typed_isolate/typed_isolate.dart';
 import '../core/context_params.dart';
 import '../core/llama.dart';
 import '../core/llama_input.dart';
+import '../core/llama_log_level.dart';
 import '../core/model_params.dart';
 import '../core/sampler_params.dart';
 import 'isolate_types.dart';
@@ -221,8 +222,7 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       llama!.freeSlot(slotId);
       sendToParent(LlamaResponse.confirmation(LlamaStatus.ready));
     } catch (e) {
-      // ignore: avoid_print
-      print("Warning freeing slot $slotId: $e");
+      LlamaLogger.warn('freeing slot $slotId: $e');
       sendToParent(LlamaResponse.confirmation(LlamaStatus.ready));
     }
   }

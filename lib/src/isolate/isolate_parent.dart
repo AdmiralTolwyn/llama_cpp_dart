@@ -4,6 +4,7 @@ import 'package:typed_isolate/typed_isolate.dart';
 
 import '../core/llama.dart';
 import '../core/llama_input.dart';
+import '../core/llama_log_level.dart';
 import '../prompt/prompt_format.dart';
 import 'isolate_child.dart';
 import 'isolate_scope.dart';
@@ -221,9 +222,8 @@ class LlamaParent {
       Duration(seconds: description == "model loading" ? 60 : 30),
       onTimeout: () {
         if (command is LlamaStop) {
-           // ignore: avoid_print
-           print("Warning: Stop command timed out, forcing state reset.");
-           return; 
+          LlamaLogger.warn('Stop command timed out, forcing state reset.');
+          return;
         }
         throw TimeoutException('Operation "$description" timed out');
       },

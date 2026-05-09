@@ -305,8 +305,7 @@ class Llama with LoraAdapterMixin {
       _nPrompt = 0;
       _pendingBytes.clear();
       if (_verbose) {
-        // ignore: avoid_print
-        print("llama: auto-trim fell back to clear (backend cannot shift)");
+        LlamaLogger.warn('auto-trim fell back to clear (backend cannot shift)');
       }
       return (0, true);
     }
@@ -316,8 +315,7 @@ class Llama with LoraAdapterMixin {
     _nPrompt = max(0, _nPrompt - trimStart);
 
     if (_verbose) {
-      // ignore: avoid_print
-      print("llama: auto-trimmed $trimStart token(s), keeping $_nPos");
+      LlamaLogger.debug('auto-trimmed $trimStart token(s), keeping $_nPos');
     }
 
     return (trimStart, true);
@@ -347,7 +345,7 @@ class Llama with LoraAdapterMixin {
   ) {
     // char*  to utf8  to dart string
     final msg = text.cast<Utf8>().toDartString();
-    print('llama native [$level] $msg');
+    LlamaLogger.info('native [$level] $msg');
   }
 
   // ── Diagnostics API ───────────────────────────────────────────────────────
@@ -398,9 +396,9 @@ class Llama with LoraAdapterMixin {
     if (_verbose) {
       final ptr = lib.llama_print_system_info();
       final sysInfo = ptr.cast<Utf8>().toDartString();
-      print(sysInfo);
-      print("modelPath: $modelPath");
-      print("libraryPath: $libraryPath");
+      LlamaLogger.info(sysInfo);
+      LlamaLogger.info('modelPath: $modelPath');
+      LlamaLogger.info('libraryPath: $libraryPath');
     }
 
     modelParamsDart ??= ModelParams();
@@ -500,7 +498,7 @@ class Llama with LoraAdapterMixin {
 
       // Only add BOS if we are at the beginning of the context
       final bool addBos = _nPos == 0;
-      if (_verbose) print("setPrompt: nPos=$_nPos, addBos=$addBos");
+      if (_verbose) LlamaLogger.debug('setPrompt: nPos=$_nPos, addBos=$addBos');
 
       _nPrompt = -lib.llama_tokenize(
           vocab, promptCharPtr, promptBytes, nullptr, 0, addBos, true);
@@ -985,8 +983,9 @@ class Llama with LoraAdapterMixin {
       // We do not strictly free the backend to allow future instances to use it.
       // lib.llama_backend_free();
     } catch (e) {
-      // Print error during disposal to avoid crashing if called from GC finalizer (though this is manual dispose)
-      print('Error during Llama dispose: $e');
+      // Log error during disposal to avoid crashing if called from a GC
+      // finalizer (though this is manual dispose).
+      LlamaLogger.error('Error during Llama dispose: $e');
     }
   }
 
@@ -1147,8 +1146,7 @@ class Llama with LoraAdapterMixin {
             ..addAll(pendingBackup);
           _slots[_currentSlotId]?.nGeneratedTotal = generatedBackup;
         } catch (e) {
-          // ignore: avoid_print
-          print('Warning: failed to restore state after embeddings: $e');
+          LlamaLogger.warn('failed to restore state after embeddings: $e');
         }
       }
       if (_status != LlamaStatus.error && !_isDisposed) {
