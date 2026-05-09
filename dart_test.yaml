@@ -1,0 +1,8 @@
+tags:
+  integration:
+    # Integration tests require native binaries (libllama.dylib) and a GGUF
+    # model file. They are excluded from CI by default.
+    #
+    # Run locally:  flutter test --tags integration
+    # Run all:      flutter test
+    # CI (default): flutter test --exclude-tags integration

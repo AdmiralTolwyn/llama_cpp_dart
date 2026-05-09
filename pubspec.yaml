@@ -1,6 +1,6 @@
 name: llama_cpp_dart
 description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
-version: 0.3.9 # Hygiene pass: submodule pinning, CI, LICENSE, print()→LlamaLogger, nBatch docs
+version: 0.3.10 # Integration tests: 11 real-model tests (stories260K.gguf), tag-gated CI
 homepage: https://github.com/AdmiralTolwyn/llama_cpp_dart
 repository: https://github.com/AdmiralTolwyn/llama_cpp_dart
 

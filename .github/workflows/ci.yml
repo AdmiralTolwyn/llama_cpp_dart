@@ -30,5 +30,5 @@ jobs:
       - name: Analyze (lib only)
         run: dart analyze lib/
 
-      - name: Test
-        run: flutter test
+      - name: Unit tests (no native lib required)
+        run: flutter test --exclude-tags integration

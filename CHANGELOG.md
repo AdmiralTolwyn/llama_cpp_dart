@@ -1,3 +1,19 @@
+## 0.3.10 (AdmiralTolwyn fork)
+
+### Integration Tests
+* **11 real-model integration tests** — `test/integration/llama_integration_test.dart`
+  loads `stories260K.gguf` (1.2 MB, ggml-org/models, MIT) via the
+  `bin/MAC_ARM64/libllama.dylib` native binary and exercises:
+  - Model loading + `LlamaDiagnostics`
+  - Tokenization (addBos, empty-text guard)
+  - Streaming and complete text generation (greedy / deterministic)
+  - Context clear + re-prompt reproducibility
+  - Remaining-context-space accounting
+  - Dispose guards (single + double dispose)
+* **Tag-gated** — tests are tagged `integration` via `dart_test.yaml`.
+  CI runs `flutter test --exclude-tags integration` (no native lib on
+  ubuntu). Run locally: `flutter test --tags integration`.
+
 ## 0.3.9 (AdmiralTolwyn fork)
 
 ### Hygiene Pass
