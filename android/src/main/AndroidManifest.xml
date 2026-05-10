@@ -1,7 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
   package="io.github.netdur.llama_cpp_dart">
-  <!-- OpenCL GPU acceleration (Qualcomm Adreno 700+) -->
-  <uses-native-library android:name="libOpenCL.so" android:required="false" />
-  <!-- Hexagon NPU acceleration (Qualcomm SM8450+ / Snapdragon 8 Gen 1+) -->
-  <uses-native-library android:name="libcdsprpc.so" android:required="false" />
+  <!--
+    `<uses-native-library>` declarations must be CHILDREN OF <application>,
+    not direct children of <manifest>. The Android manifest merger pushes
+    these entries into the consuming app's <application> block at build
+    time, surfacing the optional libraries to the runtime loader without
+    forcing them as required (android:required="false").
+  -->
+  <application>
+    <!-- OpenCL GPU acceleration (Qualcomm Adreno 700+). -->
+    <uses-native-library android:name="libOpenCL.so" android:required="false" />
+    <!-- Hexagon NPU acceleration (Qualcomm SM8450+ / Snapdragon 8 Gen 1+). -->
+    <uses-native-library android:name="libcdsprpc.so" android:required="false" />
+  </application>
 </manifest>
