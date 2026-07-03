@@ -1,3 +1,18 @@
+## 0.3.11 (AdmiralTolwyn fork)
+
+### countTokens — real-tokenizer counting across the isolate boundary
+* **`LlamaParent.countTokens(text, {addBos})`** — counts tokens with the loaded
+  model's real tokenizer via a `LlamaTokenizeCount` command round-trip to the
+  child isolate. Vocab-only (no inference, no KV-cache interaction); 10 s
+  timeout; completer wired into the error path and `dispose()`.
+* `LlamaResponse` gains a `tokenCount` field (early-return branch in the
+  parent listener, mirroring `embeddings`).
+* 3 new integration tests (14 total): isolate count matches the synchronous
+  tokenizer, addBos delta, sequential-count independence. Test file documents
+  the process-global `llama_log_set` constraint: never construct a synchronous
+  `Llama` while a `LlamaParent` child is alive (isolate-bound
+  `Pointer.fromFunction` callbacks abort the VM otherwise).
+
 ## 0.3.10 (AdmiralTolwyn fork)
 
 ### Integration Tests

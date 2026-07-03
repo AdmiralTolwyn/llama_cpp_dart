@@ -50,6 +50,9 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       case LlamaEmbedd(:final prompt):
         _handleEmbedding(prompt);
 
+      case LlamaTokenizeCount(:final text, :final addBos):
+        _handleTokenizeCount(text, addBos);
+
       case LlamaDispose():
         _handleDispose();
 
@@ -150,6 +153,26 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       ));
     } catch (e) {
       sendToParent(LlamaResponse.error("Embedding error: $e"));
+    }
+  }
+
+  /// Handle tokenize-count command. Vocab-only (llama_tokenize) — does not
+  /// touch the context or KV cache, so it is safe between generations.
+  void _handleTokenizeCount(String text, bool addBos) {
+    if (llama == null) {
+      sendToParent(LlamaResponse.error("Model not initialized"));
+      return;
+    }
+    try {
+      final tokens = llama!.tokenize(text, addBos);
+      sendToParent(LlamaResponse(
+        text: "",
+        isDone: true,
+        tokenCount: tokens.length,
+        status: LlamaStatus.ready,
+      ));
+    } catch (e) {
+      sendToParent(LlamaResponse.error("Tokenize error: $e"));
     }
   }
 

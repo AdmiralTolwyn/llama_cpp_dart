@@ -197,4 +197,60 @@ void main() {
       expect(llama.isDisposed, true);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Isolate round-trip (LlamaParent.countTokens, v0.3.11)
+  //
+  // IMPORTANT: no synchronous Llama may be constructed while the LlamaParent
+  // child is alive. llama_log_set is process-global and Pointer.fromFunction
+  // callbacks are isolate-bound — a sync Llama in the main isolate re-registers
+  // the callback, and the next child-side log then aborts the VM with
+  // "Cannot invoke native callback from a different isolate". The reference
+  // count is therefore computed in setUpAll, before the child spawns.
+  // ---------------------------------------------------------------------------
+  group('LlamaParent.countTokens', () {
+    late int directHelloCount;
+    late LlamaParent parent;
+
+    setUpAll(() async {
+      final llama = Llama(
+        modelPath,
+        contextParams: ContextParams()
+          ..nCtx = 256
+          ..nBatch = 256,
+      );
+      directHelloCount = llama.tokenize('Hello world', true).length;
+      llama.dispose();
+
+      parent = LlamaParent(LlamaLoad(
+        path: modelPath,
+        modelParams: ModelParams(),
+        contextParams: ContextParams()
+          ..nCtx = 256
+          ..nBatch = 256,
+        samplingParams: SamplerParams(),
+      ));
+      await parent.init();
+    });
+
+    tearDownAll(() => parent.dispose());
+
+    test('matches the synchronous tokenizer count', () async {
+      final viaIsolate = await parent.countTokens('Hello world', addBos: true);
+      expect(viaIsolate, directHelloCount);
+      expect(viaIsolate, greaterThanOrEqualTo(2));
+    });
+
+    test('addBos=false yields one fewer token', () async {
+      final withBos = await parent.countTokens('test', addBos: true);
+      final withoutBos = await parent.countTokens('test', addBos: false);
+      expect(withBos, withoutBos + 1);
+    });
+
+    test('sequential counts do not interfere', () async {
+      final a = await parent.countTokens('one two three four five');
+      final b = await parent.countTokens('one');
+      expect(a, greaterThan(b));
+    });
+  });
 }

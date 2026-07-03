@@ -1,6 +1,6 @@
 name: llama_cpp_dart
 description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
-version: 0.3.10 # Integration tests: 11 real-model tests (stories260K.gguf), tag-gated CI
+version: 0.3.11 # countTokens isolate round-trip (LlamaParent) + 3 integration tests
 homepage: https://github.com/AdmiralTolwyn/llama_cpp_dart
 repository: https://github.com/AdmiralTolwyn/llama_cpp_dart
 

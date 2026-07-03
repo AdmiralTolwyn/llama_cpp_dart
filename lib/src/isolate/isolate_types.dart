@@ -37,6 +37,15 @@ class LlamaEmbedd extends LlamaCommand {
   LlamaEmbedd(this.prompt);
 }
 
+/// Count tokens for [text] with the loaded model's real tokenizer.
+/// Vocab-only — no inference, no KV-cache interaction; safe to call
+/// between generations. Response arrives as [LlamaResponse.tokenCount].
+class LlamaTokenizeCount extends LlamaCommand {
+  final String text;
+  final bool addBos;
+  LlamaTokenizeCount(this.text, {this.addBos = true});
+}
+
 class LlamaInit extends LlamaCommand {
   final String? libraryPath;
   LlamaInit(this.libraryPath);
@@ -77,8 +86,11 @@ class LlamaResponse {
   final String? errorDetails;
   final bool isConfirmation;
   final List<double>? embeddings;
-  
-  final Uint8List? stateData; 
+
+  /// Result of a [LlamaTokenizeCount] command (see parent `countTokens`).
+  final int? tokenCount;
+
+  final Uint8List? stateData;
 
   LlamaResponse({
     required this.text,
@@ -88,6 +100,7 @@ class LlamaResponse {
     this.errorDetails,
     this.isConfirmation = false,
     this.embeddings,
+    this.tokenCount,
     this.stateData,
   });
 

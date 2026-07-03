@@ -46,6 +46,7 @@ class LlamaParent {
   Completer<void>? _readyCompleter;
   Completer<void>? _operationCompleter;
   Completer<List<double>>? _embeddingsCompleter;
+  Completer<int>? _tokenizeCompleter;
 
   Completer<Uint8List>? _stateCompleter;
 
@@ -106,6 +107,14 @@ class LlamaParent {
       return;
     }
 
+    if (data.tokenCount != null) {
+      if (_tokenizeCompleter != null && !_tokenizeCompleter!.isCompleted) {
+        _tokenizeCompleter!.complete(data.tokenCount);
+        _tokenizeCompleter = null;
+      }
+      return;
+    }
+
     if (data.status == LlamaStatus.error && data.errorDetails != null) {
       final ex = LlamaException(data.errorDetails!);
       
@@ -116,6 +125,10 @@ class LlamaParent {
       if (_stateCompleter != null && !_stateCompleter!.isCompleted) {
         _stateCompleter!.completeError(ex);
         _stateCompleter = null;
+      }
+      if (_tokenizeCompleter != null && !_tokenizeCompleter!.isCompleted) {
+        _tokenizeCompleter!.completeError(ex);
+        _tokenizeCompleter = null;
       }
     }
 
@@ -343,6 +356,23 @@ class LlamaParent {
     return _embeddingsCompleter!.future;
   }
 
+  /// Counts tokens for [text] using the loaded model's real tokenizer.
+  /// Vocab-only — no inference and no KV-cache interaction, so it is cheap
+  /// and safe to call between generations (callers should avoid calling it
+  /// while a generation is streaming; the child processes commands
+  /// sequentially, so the count would be delayed, not corrupted).
+  Future<int> countTokens(String text, {bool addBos = true}) async {
+    _tokenizeCompleter = Completer<int>();
+    _parent.sendToChild(id: 1, data: LlamaTokenizeCount(text, addBos: addBos));
+    return _tokenizeCompleter!.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        _tokenizeCompleter = null;
+        throw TimeoutException("countTokens timed out");
+      },
+    );
+  }
+
   Future<void> dispose() async {
     _isGenerating = false;
     _status = LlamaStatus.disposed;
@@ -350,6 +380,7 @@ class LlamaParent {
     if (_readyCompleter != null && !_readyCompleter!.isCompleted) _readyCompleter!.completeError("Disposed");
     if (_operationCompleter != null && !_operationCompleter!.isCompleted) _operationCompleter!.completeError("Disposed");
     if (_embeddingsCompleter != null && !_embeddingsCompleter!.isCompleted) _embeddingsCompleter!.completeError("Disposed");
+    if (_tokenizeCompleter != null && !_tokenizeCompleter!.isCompleted) _tokenizeCompleter!.completeError("Disposed");
     if (_stateCompleter != null && !_stateCompleter!.isCompleted) _stateCompleter!.completeError("Disposed");
 
     for (var p in _promptQueue) {
