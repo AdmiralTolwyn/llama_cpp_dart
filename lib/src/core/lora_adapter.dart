@@ -57,24 +57,56 @@ class LoraAdapter {
 mixin LoraAdapterMixin {
   Pointer<llama_context> get context;
 
+  /// Currently-applied adapters and their scales.
+  ///
+  /// Upstream (llama.cpp b8920+) replaced the incremental
+  /// `llama_set_adapter_lora` / `llama_rm_adapter_lora` /
+  /// `llama_clear_adapter_lora` API with a single replace-all
+  /// `llama_set_adapters_lora(ctx, adapters, n, scales)` call. We keep the
+  /// active set here so the existing add/remove/clear public API can be
+  /// preserved by re-applying the full batch whenever it changes.
+  final Map<LoraAdapter, double> _activeLoras = {};
+
+  /// Re-applies the full active adapter set to the context via the batch API.
+  bool _applyLoras() {
+    final n = _activeLoras.length;
+    if (n == 0) {
+      return Llama.lib.llama_set_adapters_lora(context, nullptr, 0, nullptr) ==
+          0;
+    }
+    final adapters = malloc<Pointer<llama_adapter_lora>>(n);
+    final scales = malloc<Float>(n);
+    try {
+      var i = 0;
+      for (final entry in _activeLoras.entries) {
+        adapters[i] = entry.key.nativePtr;
+        scales[i] = entry.value;
+        i++;
+      }
+      return Llama.lib.llama_set_adapters_lora(context, adapters, n, scales) == 0;
+    } finally {
+      malloc.free(adapters);
+      malloc.free(scales);
+    }
+  }
+
   /// Applies [adapter] to this context with the given [scale] (0.0 to 1.0, default 1.0).
   ///
   /// Returns true on success. A scale of 0.0 effectively disables the adapter without removing it.
   bool setLora(LoraAdapter adapter, {double scale = 1.0}) {
-    final ret = Llama.lib.llama_set_adapter_lora(
-        context, adapter.nativePtr, scale);
-    return ret == 0;
+    _activeLoras[adapter] = scale;
+    return _applyLoras();
   }
 
   /// Removes [adapter] from this context. Does NOT free adapter memory — call [LoraAdapter.dispose].
   bool rmLora(LoraAdapter adapter) {
-    final ret =
-        Llama.lib.llama_rm_adapter_lora(context, adapter.nativePtr);
-    return ret == 0;
+    _activeLoras.remove(adapter);
+    return _applyLoras();
   }
 
   /// Removes all LoRA adapters from this context.
   void clearLoras() {
-    Llama.lib.llama_clear_adapter_lora(context);
+    _activeLoras.clear();
+    Llama.lib.llama_set_adapters_lora(context, nullptr, 0, nullptr);
   }
 }

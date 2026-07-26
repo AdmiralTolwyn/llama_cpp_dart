@@ -65,8 +65,17 @@ class ModelParams {
     modelParams.split_modeAsInt = splitMode.value;
     modelParams.main_gpu = mainGpu;
     modelParams.vocab_only = vocabOnly;
-    modelParams.use_mmap = useMemorymap;
-    modelParams.use_mlock = useMemoryLock;
+    // Upstream (llama.cpp b8920+) replaced the use_mmap / use_mlock / use_direct_io
+    // booleans on llama_model_params with a single load_mode enum. Preserve the
+    // existing public bool API by mapping it onto that enum:
+    //   MLOCK (2) > MMAP (1) > NONE (0). mlock implies mmap upstream.
+    if (useMemoryLock) {
+      modelParams.load_modeAsInt = llama_load_mode.LLAMA_LOAD_MODE_MLOCK.value;
+    } else if (useMemorymap) {
+      modelParams.load_modeAsInt = llama_load_mode.LLAMA_LOAD_MODE_MMAP.value;
+    } else {
+      modelParams.load_modeAsInt = llama_load_mode.LLAMA_LOAD_MODE_NONE.value;
+    }
     modelParams.check_tensors = checkTensors;
 
     modelParams.use_extra_bufts = useExtraBufts;
