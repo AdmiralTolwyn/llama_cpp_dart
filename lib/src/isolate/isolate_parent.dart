@@ -10,6 +10,27 @@ import 'isolate_child.dart';
 import 'isolate_scope.dart';
 import 'isolate_types.dart';
 
+/// Thrown to the awaiter of a pending [LlamaParent] operation when a newer
+/// operation supersedes it (e.g. a `clear()` issued while a model load or an
+/// in-flight `stop()` has not yet been confirmed by the child isolate).
+///
+/// Superseding is a NORMAL condition during teardown/recovery: the message
+/// preserves the legacy `'Operation superseded by: <description>'` text so
+/// callers that duck-type on the string keep working across the fork bump.
+/// Callers awaiting an operation that can legitimately be superseded (stop,
+/// clear, dispose/unload, the load-attempt ladder) should catch this and treat
+/// it as benign cancellation rather than a fatal error.
+class LlamaSupersededException implements Exception {
+  /// Description of the operation that superseded the pending one.
+  final String supersededBy;
+  LlamaSupersededException(this.supersededBy);
+
+  /// Kept byte-compatible with the previous `StateError` toString so existing
+  /// string matches (`.contains('Operation superseded')`) still fire.
+  @override
+  String toString() => 'Operation superseded by: $supersededBy';
+}
+
 /// Event emitted when a completion finishes or fails
 class CompletionEvent {
   final String promptId;
@@ -223,8 +244,17 @@ class LlamaParent {
     // the previous future would only resolve via its 30s/60s timeout.
     final previous = _operationCompleter;
     if (previous != null && !previous.isCompleted) {
+      // Defense in depth against the superseded error surfacing as an
+      // UNHANDLED async error (Crashlytics: fatal 'Bad state: Operation
+      // superseded by: context clear'). A live awaiter keeps its own listener
+      // on `previous.future` and still receives the exception below; ignore()
+      // only attaches a benign no-op error listener so that a detached awaiter
+      // (its .timeout already fired, or a fire-and-forget caller) can never
+      // leave the future error-listener-less. It does NOT swallow the error
+      // for live awaiters.
+      previous.future.ignore();
       previous.completeError(
-        StateError('Operation superseded by: $description'),
+        LlamaSupersededException(description),
       );
     }
     _operationCompleter = Completer<void>();
