@@ -1,6 +1,7 @@
 @Tags(['integration'])
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -251,6 +252,87 @@ void main() {
       final a = await parent.countTokens('one two three four five');
       final b = await parent.countTokens('one');
       expect(a, greaterThan(b));
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Supersede semantics (Crashlytics: fatal 'Bad state: Operation superseded
+  // by: context clear'). A newer operation (e.g. clear()) issued while a
+  // previous _sendCommand-based op (load / stop / clear) is still pending
+  // supersedes it. A LIVE awaiter must receive LlamaSupersededException; a
+  // DETACHED / fire-and-forget awaiter must NOT leak an unhandled async error.
+  // ---------------------------------------------------------------------------
+  group('supersede', () {
+    late LlamaParent parent;
+
+    setUp(() async {
+      parent = LlamaParent(LlamaLoad(
+        path: modelPath,
+        modelParams: ModelParams(),
+        contextParams: ContextParams()
+          ..nCtx = 256
+          ..nBatch = 256,
+        samplingParams: SamplerParams(),
+      ));
+      await parent.init();
+    });
+
+    tearDown(() => parent.dispose());
+
+    test('live awaiter of a superseded op receives LlamaSupersededException',
+        () async {
+      // Two clears in the same turn: the second supersedes the first before the
+      // child confirms it. The first clear's awaiter is live (we await it).
+      final first = parent.clear();
+      final second = parent.clear();
+      await expectLater(first, throwsA(isA<LlamaSupersededException>()));
+      // The superseding op still completes normally.
+      await second;
+    });
+
+    test('superseded exception preserves the legacy message text', () async {
+      final first = parent.clear();
+      final second = parent.clear();
+      try {
+        await first;
+        fail('expected supersede');
+      } catch (e) {
+        expect(e, isA<LlamaSupersededException>());
+        expect(e.toString(), contains('Operation superseded'));
+        expect(e.toString(), contains('context clear'));
+      }
+      await second;
+    });
+
+    test('a superseded op handled with catchError leaks nothing to the zone '
+        '(app-side cancellation contract)', () async {
+      // The error of a superseded op propagates to its awaiter via the live
+      // .timeout listener — the fork cannot suppress that for the awaiter, so
+      // fire-and-forget callers MUST attach a catch. This asserts that the
+      // documented app-side pattern (catchError swallowing the supersede)
+      // leaves NO unhandled async error in the zone, which is what stops the
+      // Crashlytics fatal.
+      final unhandled = <Object>[];
+      LlamaSupersededException? caught;
+      await runZonedGuarded(() async {
+        // Fire-and-forget, but with the app-side benign-cancellation catch.
+        // ignore: unawaited_futures
+        parent.clear().catchError((Object e) {
+          if (e is LlamaSupersededException) {
+            caught = e;
+            return; // benign cancellation
+          }
+          throw e; // anything else stays fatal
+        });
+        // Supersede in the same turn (child cannot have confirmed yet), so the
+        // first clear is guaranteed to be superseded, not confirmed.
+        final superseding = parent.clear();
+        await Future.delayed(const Duration(milliseconds: 100));
+        await superseding;
+      }, (e, s) => unhandled.add(e));
+      expect(caught, isA<LlamaSupersededException>());
+      expect(unhandled, isEmpty,
+          reason: 'benign-cancellation catch still leaked: $unhandled');
     });
   });
 }
