@@ -38,7 +38,10 @@ build_for_platform() {
           -DLLAMA_BUILD_TESTS=OFF \
           -DLLAMA_BUILD_EXAMPLES=OFF \
           -DLLAMA_BUILD_SERVER=OFF \
-          -DLLAMA_BUILD_TOOLS=ON \
+          -DLLAMA_BUILD_TOOLS=OFF \
+          -DLLAMA_BUILD_APP=OFF \
+          -DLLAMA_BUILD_MTMD=ON \
+          -DMTMD_VIDEO=OFF \
           -DLLAMA_BUILD_COMMON=ON \
           -DLLAMA_OPENSSL=OFF \
           -DCMAKE_PROJECT_INCLUDE="${script_dir}/no_bundle.cmake" \

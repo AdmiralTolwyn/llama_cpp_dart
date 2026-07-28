@@ -122,10 +122,14 @@ fi
 
 echo "Fixing rpaths for ${PLATFORM}..."
 
-# Main libraries
-fix_rpaths "$LIB_DIR/libllama.dylib"
-fix_rpaths "$LIB_DIR/libggml.dylib"
-fix_rpaths "$LIB_DIR/libmtmd.dylib"
+# Main libraries. Since the single-dylib merge (all static libs linked into
+# libllama.dylib), libggml/libmtmd no longer exist as separate dylibs — skip
+# whatever is absent instead of hard-failing.
+for lib in libllama.dylib libggml.dylib libmtmd.dylib; do
+    if [ -f "$LIB_DIR/$lib" ]; then
+        fix_rpaths "$LIB_DIR/$lib"
+    fi
+done
 
 # Component libraries
 for lib in "$LIB_DIR/libggml-"*.dylib; do
