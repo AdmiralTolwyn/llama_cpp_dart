@@ -47,6 +47,53 @@ class SamplerParams {
 
   SamplerParams();
 
+  /// Returns a deep copy of these params.
+  ///
+  /// Used by the per-prompt grammar override: the load-time [SamplerParams] are
+  /// retained verbatim by [Llama], and each grammar swap rebuilds the sampler
+  /// chain from a copy whose [grammarStr]/[grammarRoot] are replaced. Copying
+  /// (rather than mutating) keeps the load-time configuration authoritative, so
+  /// reverting to "no grammar" restores exactly the chain built at load.
+  SamplerParams copy() {
+    final c = SamplerParams();
+    c.temp = temp;
+    c.dynatempRange = dynatempRange;
+    c.dynatempExponent = dynatempExponent;
+    c.topK = topK;
+    c.topP = topP;
+    c.minP = minP;
+    c.typical = typical;
+    c.topNSigma = topNSigma;
+    c.xtcProbability = xtcProbability;
+    c.xtcThreshold = xtcThreshold;
+    c.mirostat = mirostat;
+    c.mirostatTau = mirostatTau;
+    c.mirostatEta = mirostatEta;
+    c.mirostatM = mirostatM;
+    c.penaltyLastTokens = penaltyLastTokens;
+    c.penaltyRepeat = penaltyRepeat;
+    c.penaltyFreq = penaltyFreq;
+    c.penaltyPresent = penaltyPresent;
+    c.penaltyNewline = penaltyNewline;
+    c.ignoreEOS = ignoreEOS;
+    c.dryMultiplier = dryMultiplier;
+    c.dryBase = dryBase;
+    c.dryAllowedLen = dryAllowedLen;
+    c.dryPenaltyLastN = dryPenaltyLastN;
+    c.dryBreakers = List<String>.from(dryBreakers);
+    c.grammarStr = grammarStr;
+    c.grammarRoot = grammarRoot;
+    c.greedy = greedy;
+    c.softmax = softmax;
+    c.seed = seed;
+    c.topPKeep = topPKeep;
+    c.minPKeep = minPKeep;
+    c.typicalKeep = typicalKeep;
+    c.xtcKeep = xtcKeep;
+    c.xtcLength = xtcLength;
+    return c;
+  }
+
   SamplerParams.fromJson(Map<String, dynamic> json) {
     temp = (json['temp'] ?? 0.8).toDouble();
     dynatempRange = (json['dynatempRange'] ?? 0.0).toDouble();

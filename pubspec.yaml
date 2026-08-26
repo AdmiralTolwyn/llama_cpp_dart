@@ -1,6 +1,6 @@
 name: llama_cpp_dart
 description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
-version: 0.3.10 # Integration tests: 11 real-model tests (stories260K.gguf), tag-gated CI
+version: 0.4.0 # Per-prompt GBNF grammar override (no reload); greedy chains can be constrained
 homepage: https://github.com/AdmiralTolwyn/llama_cpp_dart
 repository: https://github.com/AdmiralTolwyn/llama_cpp_dart
 
@@ -34,6 +34,7 @@ dependencies:
   flutter:
     sdk: flutter
   ffi: ^2.1.5
+  meta: ^1.15.0
   typed_isolate: ^6.0.0
   uuid: ^4.5.1
   image: ^4.7.2

@@ -21,18 +21,23 @@ class LlamaScope {
   /// Create a new scope for the given parent
   LlamaScope(this._parent);
 
-  /// Send a prompt to the model and track its ID in this scope
-  Future<String> sendPrompt(String prompt) async {
-    final promptId = await _parent.sendPrompt(prompt, scope: this);
+  /// Send a prompt to the model and track its ID in this scope.
+  ///
+  /// [grammarStr]/[grammarRoot] optionally constrain this one generation to a
+  /// GBNF grammar; see [LlamaParent.sendPrompt] for the contract.
+  Future<String> sendPrompt(String prompt,
+      {String? grammarStr, String? grammarRoot}) async {
+    final promptId = await _parent.sendPrompt(prompt,
+        scope: this, grammarStr: grammarStr, grammarRoot: grammarRoot);
     _promptIds.add(promptId);
     return promptId;
   }
 
   /// Send a prompt with images to the model and track its ID in this scope
-  Future<String> sendPromptWithImages(
-      String prompt, List<LlamaImage> images) async {
-    final promptId =
-        await _parent.sendPromptWithImages(prompt, images, scope: this);
+  Future<String> sendPromptWithImages(String prompt, List<LlamaImage> images,
+      {String? grammarStr, String? grammarRoot}) async {
+    final promptId = await _parent.sendPromptWithImages(prompt, images,
+        scope: this, grammarStr: grammarStr, grammarRoot: grammarRoot);
     _promptIds.add(promptId);
     return promptId;
   }

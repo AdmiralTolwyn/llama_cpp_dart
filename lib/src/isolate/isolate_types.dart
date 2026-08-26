@@ -48,7 +48,26 @@ class LlamaPrompt extends LlamaCommand {
   final List<LlamaImage>? images;
   final String? slotId;
 
-  LlamaPrompt(this.prompt, this.promptId, {this.images, this.slotId});
+  /// Per-prompt GBNF grammar constraining this generation.
+  ///
+  /// `null` keeps whatever grammar the model was loaded with (the default, and
+  /// byte-for-byte the previous behaviour); `''` explicitly drops it; a GBNF
+  /// string constrains this one generation. The child swaps the sampler chain
+  /// in place, so a resident multi-gigabyte model never has to be reloaded to
+  /// change the grammar.
+  final String? grammarStr;
+
+  /// Root rule of [grammarStr]. Defaults to the conventional `root`.
+  final String? grammarRoot;
+
+  LlamaPrompt(
+    this.prompt,
+    this.promptId, {
+    this.images,
+    this.slotId,
+    this.grammarStr,
+    this.grammarRoot,
+  });
 }
 
 class LlamaLoad extends LlamaCommand {

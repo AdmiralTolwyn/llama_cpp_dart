@@ -24,7 +24,10 @@ class _QueuedPrompt {
   final Completer<String> idCompleter = Completer<String>();
   final Object? scope;
   final List<LlamaImage>? images;
-  _QueuedPrompt(this.prompt, this.scope, {this.images});
+  final String? grammarStr;
+  final String? grammarRoot;
+  _QueuedPrompt(this.prompt, this.scope,
+      {this.images, this.grammarStr, this.grammarRoot});
 }
 
 /// Parent class that manages communication with the LlamaChild isolate
@@ -230,21 +233,38 @@ class LlamaParent {
     );
   }
 
-  Future<String> sendPrompt(String prompt, {Object? scope}) async {
+  /// Queues [prompt] for generation.
+  ///
+  /// [grammarStr] optionally constrains *this* generation to a GBNF grammar,
+  /// without reloading the model: `null` (the default) keeps whatever grammar
+  /// the load-time [SamplerParams] carried — byte-for-byte the previous
+  /// behaviour — `''` explicitly drops it, and a GBNF string constrains this
+  /// one prompt. [grammarRoot] names the grammar's root rule and defaults to
+  /// the conventional `root`.
+  ///
+  /// A grammar llama.cpp cannot compile is non-fatal: generation proceeds
+  /// unconstrained and the reason arrives as `errorDetails` on the
+  /// [CompletionEvent] (with `success` still true).
+  Future<String> sendPrompt(String prompt,
+      {Object? scope, String? grammarStr, String? grammarRoot}) async {
     if (loadCommand.contextParams.embeddings) {
       throw StateError("Configured for embeddings only.");
     }
-    final queuedPrompt = _QueuedPrompt(prompt, scope);
+    final queuedPrompt = _QueuedPrompt(prompt, scope,
+        grammarStr: grammarStr, grammarRoot: grammarRoot);
     _promptQueue.add(queuedPrompt);
     if (!_isProcessingQueue) _processNextPrompt();
     return queuedPrompt.idCompleter.future;
   }
 
-  Future<String> sendPromptWithImages(String prompt, List<LlamaImage> images, {Object? scope}) async {
+  /// As [sendPrompt], with images. See [sendPrompt] for the grammar contract.
+  Future<String> sendPromptWithImages(String prompt, List<LlamaImage> images,
+      {Object? scope, String? grammarStr, String? grammarRoot}) async {
     if (loadCommand.contextParams.embeddings) {
       throw StateError("Configured for embeddings only.");
     }
-    final queuedPrompt = _QueuedPrompt(prompt, scope, images: images);
+    final queuedPrompt = _QueuedPrompt(prompt, scope,
+        images: images, grammarStr: grammarStr, grammarRoot: grammarRoot);
     _promptQueue.add(queuedPrompt);
     if (!_isProcessingQueue) _processNextPrompt();
     return queuedPrompt.idCompleter.future;
@@ -306,7 +326,10 @@ class LlamaParent {
     _parent.sendToChild(
         id: 1,
         data: LlamaPrompt(formattedPrompt, _currentPromptId,
-            images: nextPrompt.images, slotId: targetSlotId));
+            images: nextPrompt.images,
+            slotId: targetSlotId,
+            grammarStr: nextPrompt.grammarStr,
+            grammarRoot: nextPrompt.grammarRoot));
 
     _promptCompleters[_currentPromptId]!.future.whenComplete(() {
       _processNextPrompt();

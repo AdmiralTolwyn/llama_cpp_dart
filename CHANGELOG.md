@@ -1,3 +1,87 @@
+## 0.4.0 (AdmiralTolwyn fork)
+
+### Per-prompt GBNF grammar override
+
+`SamplerParams` only ever travelled on the load command, so constraining a
+generation to a grammar meant re-reading the entire model. For a resident
+multi-gigabyte model that is a per-request reload. The grammar now rides the
+**prompt**.
+
+* **`LlamaParent.sendPrompt(prompt, {grammarStr, grammarRoot})`** — and the
+  same two optional named parameters on `sendPromptWithImages` and on both
+  `LlamaScope` variants. They are threaded verbatim onto the new
+  `LlamaPrompt.grammarStr` / `LlamaPrompt.grammarRoot` fields.
+  - `null` (default) — keep whatever grammar the load-time `SamplerParams`
+    carried. Byte-for-byte the previous behaviour, load-time grammars included.
+  - `''` — explicitly unconstrained, dropping any load-time grammar.
+  - GBNF — constrain this one generation.
+  - `grammarRoot` defaults to the conventional `root` rule.
+* **`Llama.applyGrammar(String? grammarStr, {String? grammarRoot})`** — the
+  core-side swap. It rebuilds the sampler chain **only when the effective
+  grammar actually changes**: consecutive grammar-less prompts and consecutive
+  prompts carrying the identical grammar string cost nothing. `Llama` retains a
+  copy of the load-time `SamplerParams` (new `SamplerParams.copy()`) and every
+  rebuild starts from that copy with only the grammar fields replaced, so
+  reverting restores exactly the chain built at load.
+* **Grammar samplers are stateful across tokens.** When the chain is reused
+  unchanged under an active grammar, `llama_sampler_reset` is issued first —
+  `llama_sampler_chain_reset` propagates to every member and the grammar
+  sampler re-parses its GBNF back to the start state. Without this, the second
+  generation under the same grammar would resume in the previous one's terminal
+  state and mask every token. Unconstrained sessions are untouched.
+
+### Fixed
+
+* **A grammar was silently ignored in greedy mode.** `SamplerFactory.build`
+  returned early for `params.greedy`, before the grammar block ever ran — so
+  tuned, near-greedy models could not be constrained at all. The grammar
+  sampler is now added **first**, ahead of the early return: it masks
+  grammar-illegal tokens to `-INF`, and whatever selects the token afterwards
+  (the greedy argmax, or `dist` at the end of the full chain) only ever sees
+  legal candidates. Chain composition with an empty grammar is unchanged:
+  `[greedy]` for greedy, `[penalties … dist]` otherwise.
+* **A grammar with no named root rule is no longer discarded.** An empty
+  `grammarRoot` now falls back to `root` (`kDefaultGrammarRoot`) instead of
+  handing llama.cpp an empty root name, which always returned `nullptr`.
+
+### Robustness
+
+* **Bad GBNF degrades; it never crashes or wedges the isolate.**
+  `llama_sampler_init_grammar` returns `nullptr` on invalid GBNF or an unknown
+  root rule. `SamplerFactory.build` reports that through a new optional
+  `onGrammarError` callback and returns a complete, valid, *unconstrained*
+  chain — never a half-built one. `applyGrammar` returns the message rather
+  than throwing, marks the grammar inactive (so a retry recompiles instead of
+  being skipped as a no-op), and leaves generation running.
+* **The swap is leak-free and exception-safe.** The replacement chain is built
+  first; only once it is known good is `_smpl` reassigned and the old chain
+  passed to `llama_sampler_free`. If the rebuild throws or yields a null chain,
+  the existing known-good sampler is kept and the reason is returned.
+* **Non-fatal notice on the existing channel.** The child warns via
+  `LlamaLogger.warn` (matching the existing `_handleFreeSlot` precedent) and
+  carries the reason as `errorDetails` on the terminal `LlamaStatus.ready`
+  response. It surfaces on `CompletionEvent.errorDetails` with
+  `success == true`; `LlamaParent` only treats `errorDetails` as fatal when the
+  status is `error`, so nothing throws.
+
+### Tests
+
+* `test/grammar_override_test.dart` — 4 unit tests: `SamplerParams.copy()`
+  field-for-field fidelity and `dryBreakers` deep-copy independence,
+  `LlamaPrompt` grammar fields defaulting to null.
+* `test/integration/grammar_override_integration_test.dart` — 18 real-model
+  tests (`stories260K.gguf`, tagged `integration`): constrain-then-revert in one
+  session, identical-grammar no-rebuild via the new
+  `Llama.samplerRebuildCount` test seam, invalid GBNF and missing-root-rule
+  degradation, grammar under greedy *and* non-greedy sampling, load-time
+  grammar preservation, end-to-end through `LlamaParent.sendPrompt`, and
+  `SamplerFactory` chain-composition assertions read back out of the native
+  chain with `llama_sampler_chain_n` / `llama_sampler_name`.
+
+### Dependencies
+
+* Added `meta` (for `@visibleForTesting` on `Llama.samplerRebuildCount`).
+
 ## 0.3.10 (AdmiralTolwyn fork)
 
 ### Integration Tests
