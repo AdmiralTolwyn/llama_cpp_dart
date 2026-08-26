@@ -7,6 +7,7 @@ import 'dart:math' show max, min, sqrt;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+import 'package:meta/meta.dart';
 import 'sampler_params.dart';
 import 'model_params.dart';
 import 'llama_cpp.dart';
@@ -33,6 +34,20 @@ class Llama with LoraAdapterMixin {
   late llama_batch batch;
 
   Pointer<llama_sampler> _smpl = nullptr;
+
+  /// The sampler configuration the model was loaded with. Every sampler
+  /// rebuild starts from a copy of this, so the load-time configuration stays
+  /// authoritative and reverting a per-prompt grammar restores exactly the
+  /// chain that was built at load time.
+  SamplerParams _loadSamplerParams = SamplerParams();
+
+  /// GBNF currently installed in the sampler chain ('' = unconstrained), and
+  /// its root rule (normalised — see [_normaliseRoot]).
+  String _activeGrammar = '';
+  String _activeGrammarRoot = '';
+
+  int _samplerRebuildCount = 0;
+
   Pointer<llama_token> _tokens = nullptr;
   Pointer<llama_token> _tokenPtr = nullptr;
   Pointer<mtmd_context> _mctx = nullptr;
@@ -439,12 +454,26 @@ class Llama with LoraAdapterMixin {
       rethrow;
     }
 
+    final loadSamplerParams = samplerParams ?? SamplerParams();
+    _loadSamplerParams = loadSamplerParams.copy();
+
+    String? grammarFailure;
     _smpl = SamplerFactory.build(
       lib: lib,
       vocab: vocab,
       model: model,
-      params: samplerParams ?? SamplerParams(),
+      params: loadSamplerParams,
+      onGrammarError: (m) => grammarFailure = m,
     );
+    if (grammarFailure != null) {
+      LlamaLogger.warn('load-time grammar ignored: $grammarFailure');
+    }
+    // Track what is actually installed, not what was asked for: a load-time
+    // grammar that failed to compile is not active, so a later per-prompt
+    // request for the same grammar retries the compile instead of assuming it.
+    _activeGrammar = grammarFailure == null ? loadSamplerParams.grammarStr : '';
+    _activeGrammarRoot =
+        _normaliseRoot(_activeGrammar, loadSamplerParams.grammarRoot);
 
     if (mmprojPath != null && mmprojPath.isNotEmpty) {
       final mprojPathPtr = mmprojPath.toNativeUtf8().cast<Char>();
@@ -465,6 +494,109 @@ class Llama with LoraAdapterMixin {
     _tokenPtr = malloc<llama_token>();
   }
 
+
+  /// Normalises a grammar root: empty root means "the conventional `root`
+  /// rule", and the root of an empty grammar is meaningless.
+  static String _normaliseRoot(String grammar, String root) {
+    if (grammar.isEmpty) return '';
+    return root.isEmpty ? kDefaultGrammarRoot : root;
+  }
+
+  /// Number of times the sampler chain has been rebuilt since load.
+  ///
+  /// Test seam for the per-prompt grammar override: consecutive prompts that
+  /// carry the same effective grammar must not move this counter.
+  @visibleForTesting
+  int get samplerRebuildCount => _samplerRebuildCount;
+
+  /// The GBNF currently constraining generation; `''` when unconstrained.
+  String get activeGrammar => _activeGrammar;
+
+  /// Installs [grammarStr] as the grammar constraining generation, rebuilding
+  /// the sampler chain only when the effective grammar actually changes.
+  ///
+  /// This exists so a resident model can be constrained per prompt without a
+  /// reload: [SamplerParams] only ever travels on the load command, so before
+  /// this a scan-specific grammar meant re-reading the whole model.
+  ///
+  ///  * `null`  — keep the grammar the model was loaded with. This is the
+  ///    no-op case, and it reproduces pre-existing behaviour byte for byte
+  ///    (including for callers who set a grammar in their load-time
+  ///    [SamplerParams] and expect it on every prompt).
+  ///  * `''`    — explicitly unconstrained, discarding any load-time grammar.
+  ///  * GBNF    — constrain this generation to that grammar.
+  ///
+  /// [grammarRoot] names the grammar's root rule; when omitted, the
+  /// conventional `root` is used.
+  ///
+  /// Returns `null` on success, or a non-fatal message when the GBNF could not
+  /// be compiled. In that case the chain is rebuilt **without** a grammar and
+  /// generation proceeds unconstrained — a bad grammar degrades, it never
+  /// crashes or wedges the model.
+  String? applyGrammar(String? grammarStr, {String? grammarRoot}) {
+    if (_isDisposed) throw StateError('Disposed');
+
+    final effective = grammarStr ?? _loadSamplerParams.grammarStr;
+    final effectiveRoot = _normaliseRoot(
+      effective,
+      grammarStr == null
+          ? _loadSamplerParams.grammarRoot
+          : (grammarRoot ?? ''),
+    );
+
+    if (effective == _activeGrammar && effectiveRoot == _activeGrammarRoot) {
+      // No rebuild — consecutive prompts under the same grammar cost nothing.
+      //
+      // The grammar sampler is stateful across tokens, though: it walks the
+      // grammar as tokens are accepted and ends a generation in a terminal
+      // state where nothing more is legal. Reusing it as-is would mask every
+      // token of the next generation. llama_sampler_reset propagates through
+      // the chain (llama_sampler_chain_reset) and the grammar sampler's reset
+      // re-parses the GBNF back to its start state, so this restores it.
+      // Only done when a grammar is active, so unconstrained sessions keep
+      // their previous behaviour exactly.
+      if (_activeGrammar.isNotEmpty && _smpl != nullptr) {
+        lib.llama_sampler_reset(_smpl);
+      }
+      return null;
+    }
+
+    final params = _loadSamplerParams.copy()
+      ..grammarStr = effective
+      ..grammarRoot = effectiveRoot;
+
+    String? failure;
+    Pointer<llama_sampler> rebuilt = nullptr;
+    try {
+      rebuilt = SamplerFactory.build(
+        lib: lib,
+        vocab: vocab,
+        model: model,
+        params: params,
+        onGrammarError: (m) => failure = m,
+      );
+    } catch (e) {
+      // Never install a half-built chain: keep the known-good one.
+      return 'Sampler rebuild failed ($e); previous sampler kept';
+    }
+    if (rebuilt == nullptr) {
+      return 'Sampler rebuild produced a null chain; previous sampler kept';
+    }
+
+    // Swap only once the replacement is known good, then free the old chain.
+    final previous = _smpl;
+    _smpl = rebuilt;
+    if (previous != nullptr) lib.llama_sampler_free(previous);
+    _samplerRebuildCount++;
+
+    // On compile failure the chain just installed carries no grammar, so say
+    // so — otherwise a retry of the same bad grammar would be skipped as a
+    // no-op and generation would look constrained when it is not.
+    _activeGrammar = failure == null ? effective : '';
+    _activeGrammarRoot = failure == null ? effectiveRoot : '';
+
+    return failure;
+  }
 
   void setPrompt(String prompt,
       {void Function(int current, int total)? onProgress}) {

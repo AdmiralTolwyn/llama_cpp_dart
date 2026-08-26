@@ -40,9 +40,12 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
           :final prompt,
           :final promptId,
           :final images,
-          :final slotId
+          :final slotId,
+          :final grammarStr,
+          :final grammarRoot
         ):
-        _handlePrompt(prompt, promptId, images, slotId);
+        _handlePrompt(prompt, promptId, images, slotId, grammarStr,
+            grammarRoot);
 
       case LlamaInit(:final libraryPath):
         _handleInit(libraryPath);
@@ -177,10 +180,10 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   }
 
   /// Handle prompt command
-  void _handlePrompt(
-      String prompt, String promptId, List<LlamaImage>? images, String? slotId) {
+  void _handlePrompt(String prompt, String promptId, List<LlamaImage>? images,
+      String? slotId, String? grammarStr, String? grammarRoot) {
     shouldStop = false;
-    _sendPrompt(prompt, promptId, images, slotId);
+    _sendPrompt(prompt, promptId, images, slotId, grammarStr, grammarRoot);
   }
 
   void _handleSaveState(String slotId) {
@@ -250,12 +253,21 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
     }
   }
 
-  Future<void> _sendPrompt(String prompt, String promptId,
-      List<LlamaImage>? images, String? slotId) async {
+  Future<void> _sendPrompt(
+      String prompt,
+      String promptId,
+      List<LlamaImage>? images,
+      String? slotId,
+      String? grammarStr,
+      String? grammarRoot) async {
     if (llama == null) {
       sendToParent(LlamaResponse.error("Model not initialized", promptId));
       return;
     }
+
+    // Non-fatal notice carried back on the completion event: the generation
+    // still succeeds, it is just unconstrained.
+    String? grammarNotice;
 
     try {
       if (slotId != null) {
@@ -269,6 +281,15 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
         }
       } else {
         llama!.setSlot("default");
+      }
+
+      // Swap the grammar before the prompt is fed in. A grammar that will not
+      // compile degrades to unconstrained generation and is reported as a
+      // non-fatal notice — same shape as the slot-free path above, which warns
+      // and still confirms success.
+      grammarNotice = llama!.applyGrammar(grammarStr, grammarRoot: grammarRoot);
+      if (grammarNotice != null) {
+        LlamaLogger.warn('prompt $promptId: $grammarNotice');
       }
 
       sendToParent(LlamaResponse(
@@ -299,7 +320,12 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
           text: "",
           isDone: true,
           status: LlamaStatus.ready,
-          promptId: promptId));
+          promptId: promptId,
+          // Ready + errorDetails = the generation succeeded but something was
+          // degraded. LlamaParent only treats errorDetails as fatal when the
+          // status is `error`; here it surfaces on the CompletionEvent with
+          // success == true.
+          errorDetails: grammarNotice));
     } catch (e) {
       sendToParent(
           LlamaResponse.error("Generation error: ${e.toString()}", promptId));
