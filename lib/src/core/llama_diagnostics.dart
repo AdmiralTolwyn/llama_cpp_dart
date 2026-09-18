@@ -109,31 +109,46 @@ class LlamaRuntime {
   static String _resolveBackendName(llama_cpp lib, int nGpuLayers) {
     if (nGpuLayers <= 0) return 'CPU';
 
-    // llama.cpp provides a system info string that includes backend names
+    // Ask the live ggml-backend device registry rather than parsing
+    // llama_print_system_info()'s text: that string is compile-flag
+    // formatted (e.g. "METAL = 1") and this engine line registers its
+    // Metal device as "MTL" ("MTL : EMBED_LIBRARY = 1"), so the old
+    // substring match never hit and every GPU run silently reported
+    // "CPU" even with 35/35 layers offloaded to Metal.
     try {
-      final ptr = lib.llama_print_system_info();
-      if (ptr != nullptr) {
-        final info = ptr.cast<Utf8>().toDartString();
-        // Parse "METAL = 1" / "CUDA = 1" / "Vulkan = 1" from system info
-        if (info.contains('METAL = 1') || info.contains('Metal = 1')) {
-          return 'Metal';
+      final devCount = lib.ggml_backend_dev_count();
+      for (var i = 0; i < devCount; i++) {
+        final dev = lib.ggml_backend_dev_get(i);
+        final type = lib.ggml_backend_dev_type$1(dev);
+        // GPU/IGPU devices hold offloaded layers; ACCEL (e.g. BLAS) and
+        // CPU devices pair with the CPU backend and never do.
+        if (type != ggml_backend_dev_type.GGML_BACKEND_DEVICE_TYPE_GPU &&
+            type != ggml_backend_dev_type.GGML_BACKEND_DEVICE_TYPE_IGPU) {
+          continue;
         }
-        if (info.contains('CUDA = 1') || info.contains('cuda = 1')) {
-          return 'CUDA';
-        }
-        if (info.contains('VULKAN = 1') || info.contains('Vulkan = 1')) {
-          return 'Vulkan';
-        }
-        if (info.contains('OpenCL = 1') || info.contains('OPENCL = 1')) {
-          return 'OpenCL';
-        }
-        if (info.contains('BLAS = 1')) {
-          return 'BLAS';
-        }
+        final reg = lib.ggml_backend_dev_backend_reg(dev);
+        final regName =
+            lib.ggml_backend_reg_name(reg).cast<Utf8>().toDartString();
+        return _friendlyBackendName(regName);
       }
     } catch (_) {
-      // If llama_print_system_info fails, fall through to CPU
+      // If the device registry can't be walked, fall through to CPU.
     }
     return 'CPU';
+  }
+
+  /// Maps a ggml backend registry name (e.g. "MTL", "CUDA0") to the
+  /// human-readable label diagnostics consumers expect. Falls back to the
+  /// registry's own name for a backend not in this table, rather than
+  /// silently reporting "CPU" for a GPU that IS active.
+  static String _friendlyBackendName(String regName) {
+    final upper = regName.toUpperCase();
+    if (upper.startsWith('MTL') || upper.startsWith('METAL')) return 'Metal';
+    if (upper.startsWith('CUDA')) return 'CUDA';
+    if (upper.startsWith('VK') || upper.startsWith('VULKAN')) return 'Vulkan';
+    if (upper.startsWith('SYCL')) return 'SYCL';
+    if (upper.startsWith('HIP') || upper.startsWith('ROCM')) return 'ROCm';
+    if (upper.startsWith('OPENCL') || upper.startsWith('CL')) return 'OpenCL';
+    return regName;
   }
 }
