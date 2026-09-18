@@ -28,6 +28,10 @@ HEADER_SOURCE_DIRS=(
 )
 
 PLIST_TEMPLATE="darwin/Info.plist"
+PLIST_TEMPLATE_MACOS="darwin/Info-macOS.plist"
+
+# macOS-only versioned-bundle layout/signing recipe (see the file for why).
+source "darwin/macos_framework_layout.sh"
 
 ###############################################################################
 # 🔑  PICK A SIGNING IDENTITY (optional) – leave empty for ad-hoc
@@ -104,12 +108,47 @@ build_slice() {
 }
 
 ###############################################################################
+# 🔧  HELPER: build the macOS slice (Apple versioned bundle, not shallow)
+###############################################################################
+# macOS's Xcode Validate phase rejects the iOS-shallow layout build_slice()
+# produces above, so the macOS slice gets its own builder: same inputs, but
+# lays out Versions/A/{binary,Headers,Resources/Info.plist} plus the
+# top-level symlinks, and always ad-hoc signs the whole bundle (see
+# darwin/macos_framework_layout.sh for why it doesn't reuse codesign_bin's
+# identity-based signing here).
+build_macos_slice() {
+  local TARGET_DIR=$1 PLATFORM=$2 MIN_OS=$3 MAIN_LIB=$4 DEP_DIR=$5
+
+  echo "▶️  Building slice: $PLATFORM"
+  mkdir -p "$TARGET_DIR/Versions/A/Headers"
+  mkdir -p "$TARGET_DIR/Versions/A/Resources"
+
+  # main dylib (single monolithic binary — all ggml libs linked statically)
+  cp "$MAIN_LIB" "$TARGET_DIR/Versions/A/$EXECUTABLE_NAME"
+
+  # headers
+  for H in "${HEADER_SOURCE_DIRS[@]}"; do cp -R "$H/." "$TARGET_DIR/Versions/A/Headers/"; done
+
+  # Info.plist (macOS keys: LSMinimumSystemVersion, CFBundleSupportedPlatforms)
+  sed -e "s/__NAME__/${FRAMEWORK_NAME}/g" \
+      -e "s/__EXECUTABLE__/${EXECUTABLE_NAME}/g" \
+      -e "s/__IDENTIFIER__/${FRAMEWORK_ID}/g" \
+      -e "s/__VERSION__/${FRAMEWORK_VERSION}/g" \
+      -e "s/__MIN_OS_VERSION__/${MIN_OS}/g" \
+      "$PLIST_TEMPLATE_MACOS" > "$TARGET_DIR/Versions/A/Resources/Info.plist"
+
+  # versioned symlinks, install name fix-up, strip + ad-hoc bundle signature
+  macos_versionize_and_sign "$TARGET_DIR" "$FRAMEWORK_NAME" "$EXECUTABLE_NAME"
+  echo
+}
+
+###############################################################################
 # 🛠  BUILD SLICES
 ###############################################################################
 build_slice "$IOS_DEVICE_FW" "iOS Device arm64" \
             "$MIN_IOS_VERSION" "$IOS_DEVICE_LIB_DIR/$MAIN_LIB_NAME" "$IOS_DEVICE_LIB_DIR"
 
-build_slice "$MACOS_FW" "macOS arm64" \
+build_macos_slice "$MACOS_FW" "macOS arm64" \
             "$MIN_MACOS_VERSION" "$MACOS_ARM64_LIB_DIR/$MAIN_LIB_NAME" "$MACOS_ARM64_LIB_DIR"
 
 # iOS Simulator (fat)
