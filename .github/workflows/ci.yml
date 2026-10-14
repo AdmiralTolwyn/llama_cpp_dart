@@ -1,10 +1,9 @@
 name: CI
 
+# Manual only (owner 2026-10-14: hosted CI is opt-in, no automatic runs).
+# Previous triggers: push to main, vacuumbreather/main, pull_request to main, vacuumbreather/main
 on:
-  push:
-    branches: [main, vacuumbreather/main]
-  pull_request:
-    branches: [main, vacuumbreather/main]
+  workflow_dispatch:
 
 jobs:
   analyze-and-test:
